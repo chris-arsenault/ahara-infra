@@ -194,8 +194,117 @@ fn generate_password() -> String {
         .collect()
 }
 
+/// Write the app role's credentials to `/ahara/db/{project}/{username,password,database}`.
+/// Used both when creating the role for the first time and when self-healing a role
+/// whose original SSM publish was incomplete.
+async fn publish_app_ssm(
+    ssm: &SsmClient,
+    project: &str,
+    role_name: &str,
+    password: &str,
+    db_name: &str,
+) -> Result<(), Error> {
+    let prefix = format!("/ahara/db/{project}");
+
+    ssm.put_parameter()
+        .name(format!("{prefix}/username"))
+        .r#type(aws_sdk_ssm::types::ParameterType::String)
+        .value(role_name)
+        .overwrite(true)
+        .send()
+        .await?;
+
+    ssm.put_parameter()
+        .name(format!("{prefix}/password"))
+        .r#type(aws_sdk_ssm::types::ParameterType::SecureString)
+        .value(password)
+        .overwrite(true)
+        .send()
+        .await?;
+
+    ssm.put_parameter()
+        .name(format!("{prefix}/database"))
+        .r#type(aws_sdk_ssm::types::ParameterType::String)
+        .value(db_name)
+        .overwrite(true)
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+/// Write the reader role's credentials to `/ahara/db/{project}/reader/{username,password}`.
+async fn publish_reader_ssm(
+    ssm: &SsmClient,
+    project: &str,
+    role_name: &str,
+    password: &str,
+) -> Result<(), Error> {
+    let prefix = format!("/ahara/db/{project}/reader");
+
+    ssm.put_parameter()
+        .name(format!("{prefix}/username"))
+        .r#type(aws_sdk_ssm::types::ParameterType::String)
+        .value(role_name)
+        .overwrite(true)
+        .send()
+        .await?;
+
+    ssm.put_parameter()
+        .name(format!("{prefix}/password"))
+        .r#type(aws_sdk_ssm::types::ParameterType::SecureString)
+        .value(password)
+        .overwrite(true)
+        .send()
+        .await?;
+
+    Ok(())
+}
+
+/// Check whether every SSM parameter the app role needs (`username`, `password`, `database`)
+/// exists at `/ahara/db/{project}/*`. Returns true only if all three are present.
+async fn app_ssm_complete(ssm: &SsmClient, project: &str) -> bool {
+    for suffix in ["username", "password", "database"] {
+        let name = format!("/ahara/db/{project}/{suffix}");
+        if ssm
+            .get_parameter()
+            .name(&name)
+            .with_decryption(true)
+            .send()
+            .await
+            .is_err()
+        {
+            return false;
+        }
+    }
+    true
+}
+
+/// Check whether the reader role's SSM parameters (`username`, `password`) exist at
+/// `/ahara/db/{project}/reader/*`.
+async fn reader_ssm_complete(ssm: &SsmClient, project: &str) -> bool {
+    for suffix in ["username", "password"] {
+        let name = format!("/ahara/db/{project}/reader/{suffix}");
+        if ssm
+            .get_parameter()
+            .name(&name)
+            .with_decryption(true)
+            .send()
+            .await
+            .is_err()
+        {
+            return false;
+        }
+    }
+    true
+}
+
 /// Ensures the project database exists with an application role and SSM credentials.
 /// Creates database, app role, grants, and publishes credentials to SSM if needed.
+///
+/// Self-healing: if a role already exists but its SSM credentials are missing (partial
+/// state from a previous run that failed between `CREATE ROLE` and `put_parameter`),
+/// rotate the role's password with `ALTER ROLE` and republish all SSM params.
 async fn ensure_database(project: &str, db_name: &str, ssm: &SsmClient) -> Result<(), Error> {
     let pg = connect_to("postgres").await?;
 
@@ -223,37 +332,31 @@ async fn ensure_database(project: &str, db_name: &str, ssm: &SsmClient) -> Resul
         ))
         .await?;
 
-        // Publish credentials to SSM
-        let ssm_prefix = format!("/ahara/db/{project}");
-
-        ssm.put_parameter()
-            .name(format!("{ssm_prefix}/username"))
-            .r#type(aws_sdk_ssm::types::ParameterType::String)
-            .value(&role_name)
-            .overwrite(true)
-            .send()
-            .await?;
-
-        ssm.put_parameter()
-            .name(format!("{ssm_prefix}/password"))
-            .r#type(aws_sdk_ssm::types::ParameterType::SecureString)
-            .value(&password)
-            .overwrite(true)
-            .send()
-            .await?;
-
-        ssm.put_parameter()
-            .name(format!("{ssm_prefix}/database"))
-            .r#type(aws_sdk_ssm::types::ParameterType::String)
-            .value(db_name)
-            .overwrite(true)
-            .send()
-            .await?;
+        publish_app_ssm(ssm, project, &role_name, &password, db_name).await?;
 
         info!(
             project,
             role = role_name,
             "App role created and credentials published to SSM"
+        );
+    } else if !app_ssm_complete(ssm, project).await {
+        // Role exists but one or more SSM params are missing. The original password is
+        // unrecoverable (random, never echoed anywhere except to SSM). Rotate and republish.
+        warn!(
+            project,
+            role = role_name,
+            "App role exists but SSM credentials are incomplete — rotating password and republishing"
+        );
+        let password = generate_password();
+        pg.batch_execute(&format!(
+            "ALTER ROLE \"{role_name}\" WITH PASSWORD '{password}'"
+        ))
+        .await?;
+        publish_app_ssm(ssm, project, &role_name, &password, db_name).await?;
+        info!(
+            project,
+            role = role_name,
+            "App role password rotated and SSM republished"
         );
     }
 
@@ -271,28 +374,29 @@ async fn ensure_database(project: &str, db_name: &str, ssm: &SsmClient) -> Resul
         ))
         .await?;
 
-        let ssm_prefix = format!("/ahara/db/{project}/reader");
-
-        ssm.put_parameter()
-            .name(format!("{ssm_prefix}/username"))
-            .r#type(aws_sdk_ssm::types::ParameterType::String)
-            .value(&reader_name)
-            .overwrite(true)
-            .send()
-            .await?;
-
-        ssm.put_parameter()
-            .name(format!("{ssm_prefix}/password"))
-            .r#type(aws_sdk_ssm::types::ParameterType::SecureString)
-            .value(&password)
-            .overwrite(true)
-            .send()
-            .await?;
+        publish_reader_ssm(ssm, project, &reader_name, &password).await?;
 
         info!(
             project,
             role = reader_name,
             "Reader role created and credentials published to SSM"
+        );
+    } else if !reader_ssm_complete(ssm, project).await {
+        warn!(
+            project,
+            role = reader_name,
+            "Reader role exists but SSM credentials are incomplete — rotating password and republishing"
+        );
+        let password = generate_password();
+        pg.batch_execute(&format!(
+            "ALTER ROLE \"{reader_name}\" WITH PASSWORD '{password}'"
+        ))
+        .await?;
+        publish_reader_ssm(ssm, project, &reader_name, &password).await?;
+        info!(
+            project,
+            role = reader_name,
+            "Reader role password rotated and SSM republished"
         );
     }
 
