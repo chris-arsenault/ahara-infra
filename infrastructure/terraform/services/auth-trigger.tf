@@ -79,10 +79,14 @@ data "aws_ssm_parameters_by_path" "auth_trigger_clients" {
 }
 
 locals {
+  # NOTE: replace() treats a pattern that starts AND ends with "/" as a
+  # regex — the outer slashes become delimiters, so the leading + trailing
+  # path slashes stay behind and every consumer name ends up prefixed with
+  # "//". Use basename() instead; it returns just the last path component.
   external_client_map = {
     for i, name in data.aws_ssm_parameters_by_path.auth_trigger_clients.names :
     data.aws_ssm_parameters_by_path.auth_trigger_clients.values[i] =>
-    replace(name, "${local.ssm_prefix}/auth-trigger/clients/", "")
+    basename(name)
   }
 }
 
