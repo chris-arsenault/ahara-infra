@@ -10,7 +10,8 @@ variable "truenas_db_projects" {
   description = "Registered TrueNAS database projects"
   type        = map(object({ db_name = string }))
   default = {
-    sonarqube = { db_name = "sonarqube" }
+    sonarqube    = { db_name = "sonarqube" }
+    shuttlecraft = { db_name = "shuttlecraft" }
   }
 }
 
