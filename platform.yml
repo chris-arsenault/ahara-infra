@@ -1,4 +1,4 @@
-project: ahara-infra
+project: ahara
 prefix: ahara
 migrations: db/migrations
 stack:
