@@ -11,7 +11,7 @@ variable "truenas_db_projects" {
   type        = map(object({ db_name = string }))
   default = {
     sonarqube    = { db_name = "sonarqube" }
-    shuttlecraft = { db_name = "shuttlecraft" }
+    sulion       = { db_name = "sulion" }
   }
 }
 
