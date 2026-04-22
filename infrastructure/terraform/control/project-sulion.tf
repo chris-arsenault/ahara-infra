@@ -12,10 +12,16 @@ module "project_sulion" {
   prefix           = "sulion"
   state_key_prefix = "projects/sulion"
 
-  module_bundles = []
+  module_bundles = ["cognito-app"]
 
   policy_modules = [
     "terraform-state",
     "komodo-deploy",
+    "ssm-write",
+  ]
+
+  ssm_additional_parameter_paths = [
+    "ahara/cognito/*",
+    "ahara/auth-trigger/clients/*",
   ]
 }
