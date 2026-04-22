@@ -19,12 +19,18 @@ data "aws_iam_policy_document" "this" {
       "iam:DeleteRolePolicy",
       "iam:GetRolePolicy",
       "iam:CreatePolicy",
+      "iam:GetPolicy",
+      "iam:GetPolicyVersion",
+      "iam:ListPolicyVersions",
+      "iam:DeletePolicy",
+      "iam:UntagPolicy",
       "iam:CreatePolicyVersion",
       "iam:DeletePolicyVersion",
     ]
     resources = [
       "arn:aws:iam::${var.account_id}:role/${var.prefix}-*",
-      "arn:aws:iam::${var.account_id}:policy/${var.prefix}-*"
+      "arn:aws:iam::${var.account_id}:policy/${var.prefix}-*",
+      "arn:aws:iam::${var.account_id}:policy/deployer-*"
     ]
   }
 }
