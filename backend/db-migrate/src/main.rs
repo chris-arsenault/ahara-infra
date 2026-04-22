@@ -261,6 +261,191 @@ async fn publish_reader_ssm(
     Ok(())
 }
 
+async fn database_exists(pg: &Client, db_name: &str) -> Result<bool, Error> {
+    Ok(!pg
+        .query("SELECT 1 FROM pg_database WHERE datname = $1", &[&db_name])
+        .await?
+        .is_empty())
+}
+
+async fn role_exists(pg: &Client, role_name: &str) -> Result<bool, Error> {
+    Ok(!pg
+        .query("SELECT 1 FROM pg_roles WHERE rolname = $1", &[&role_name])
+        .await?
+        .is_empty())
+}
+
+async fn create_database_if_missing(pg: &Client, db_name: &str) -> Result<(), Error> {
+    if database_exists(pg, db_name).await? {
+        return Ok(());
+    }
+
+    info!(db = db_name, "Creating database");
+    pg.batch_execute(&format!("CREATE DATABASE \"{db_name}\""))
+        .await?;
+    Ok(())
+}
+
+async fn create_app_role(pg: &Client, project: &str, role_name: &str) -> Result<String, Error> {
+    let password = generate_password();
+    info!(project, role = role_name, "Creating application role");
+    pg.batch_execute(&format!(
+        "CREATE ROLE \"{role_name}\" LOGIN PASSWORD '{password}'"
+    ))
+    .await?;
+    Ok(password)
+}
+
+async fn rotate_app_role(pg: &Client, project: &str, role_name: &str) -> Result<String, Error> {
+    warn!(
+        project,
+        role = role_name,
+        "App role exists but SSM credentials are incomplete — rotating password and republishing"
+    );
+    let password = generate_password();
+    pg.batch_execute(&format!(
+        "ALTER ROLE \"{role_name}\" WITH PASSWORD '{password}'"
+    ))
+    .await?;
+    Ok(password)
+}
+
+async fn ensure_app_role(
+    pg: &Client,
+    ssm: &SsmClient,
+    project: &str,
+    db_name: &str,
+) -> Result<String, Error> {
+    let role_name = format!("{project}_app");
+    if !role_exists(pg, &role_name).await? {
+        let password = create_app_role(pg, project, &role_name).await?;
+        publish_app_ssm(ssm, project, &role_name, &password, db_name).await?;
+        info!(
+            project,
+            role = role_name,
+            "App role created and credentials published to SSM"
+        );
+        return Ok(role_name);
+    }
+
+    if app_ssm_complete(ssm, project).await {
+        return Ok(role_name);
+    }
+
+    let password = rotate_app_role(pg, project, &role_name).await?;
+    publish_app_ssm(ssm, project, &role_name, &password, db_name).await?;
+    info!(
+        project,
+        role = role_name,
+        "App role password rotated and SSM republished"
+    );
+    Ok(role_name)
+}
+
+async fn create_reader_role(
+    pg: &Client,
+    project: &str,
+    reader_name: &str,
+) -> Result<String, Error> {
+    let password = generate_password();
+    info!(project, role = reader_name, "Creating reader role");
+    pg.batch_execute(&format!(
+        "CREATE ROLE \"{reader_name}\" LOGIN PASSWORD '{password}'"
+    ))
+    .await?;
+    Ok(password)
+}
+
+async fn rotate_reader_role(
+    pg: &Client,
+    project: &str,
+    reader_name: &str,
+) -> Result<String, Error> {
+    warn!(
+        project,
+        role = reader_name,
+        "Reader role exists but SSM credentials are incomplete — rotating password and republishing"
+    );
+    let password = generate_password();
+    pg.batch_execute(&format!(
+        "ALTER ROLE \"{reader_name}\" WITH PASSWORD '{password}'"
+    ))
+    .await?;
+    Ok(password)
+}
+
+async fn ensure_reader_role(pg: &Client, ssm: &SsmClient, project: &str) -> Result<String, Error> {
+    let reader_name = format!("{project}_reader");
+    if !role_exists(pg, &reader_name).await? {
+        let password = create_reader_role(pg, project, &reader_name).await?;
+        publish_reader_ssm(ssm, project, &reader_name, &password).await?;
+        info!(
+            project,
+            role = reader_name,
+            "Reader role created and credentials published to SSM"
+        );
+        return Ok(reader_name);
+    }
+
+    if reader_ssm_complete(ssm, project).await {
+        return Ok(reader_name);
+    }
+
+    let password = rotate_reader_role(pg, project, &reader_name).await?;
+    publish_reader_ssm(ssm, project, &reader_name, &password).await?;
+    info!(
+        project,
+        role = reader_name,
+        "Reader role password rotated and SSM republished"
+    );
+    Ok(reader_name)
+}
+
+async fn grant_database_access(
+    pg: &Client,
+    db_name: &str,
+    role_name: &str,
+    reader_name: &str,
+) -> Result<(), Error> {
+    pg.batch_execute(&format!(
+        "GRANT ALL PRIVILEGES ON DATABASE \"{db_name}\" TO \"{role_name}\";
+         GRANT CONNECT ON DATABASE \"{db_name}\" TO \"{reader_name}\";"
+    ))
+    .await?;
+
+    pg.batch_execute(&format!("GRANT \"{role_name}\" TO CURRENT_USER"))
+        .await?;
+    Ok(())
+}
+
+async fn grant_schema_access(
+    db_name: &str,
+    role_name: &str,
+    reader_name: &str,
+) -> Result<(), Error> {
+    let db = connect_to(db_name).await?;
+    db.batch_execute(&format!(
+        "GRANT ALL ON SCHEMA public TO \"{role_name}\";
+         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"{role_name}\";
+         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"{role_name}\";
+         GRANT ALL ON ALL TABLES IN SCHEMA public TO \"{role_name}\";
+         GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO \"{role_name}\";"
+    ))
+    .await?;
+
+    db.batch_execute(&format!(
+        "GRANT USAGE ON SCHEMA public TO \"{reader_name}\";
+         GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{reader_name}\";
+         GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{reader_name}\";
+         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO \"{reader_name}\";
+         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO \"{reader_name}\";
+         ALTER DEFAULT PRIVILEGES FOR ROLE \"{role_name}\" IN SCHEMA public GRANT SELECT ON TABLES TO \"{reader_name}\";
+         ALTER DEFAULT PRIVILEGES FOR ROLE \"{role_name}\" IN SCHEMA public GRANT SELECT ON SEQUENCES TO \"{reader_name}\";"
+    ))
+    .await?;
+    Ok(())
+}
+
 /// Check whether every SSM parameter the app role needs (`username`, `password`, `database`)
 /// exists at `/ahara/db/{project}/*`. Returns true only if all three are present.
 async fn app_ssm_complete(ssm: &SsmClient, project: &str) -> bool {
@@ -307,131 +492,11 @@ async fn reader_ssm_complete(ssm: &SsmClient, project: &str) -> bool {
 /// rotate the role's password with `ALTER ROLE` and republish all SSM params.
 async fn ensure_database(project: &str, db_name: &str, ssm: &SsmClient) -> Result<(), Error> {
     let pg = connect_to("postgres").await?;
-
-    // Create database if needed
-    let rows = pg
-        .query("SELECT 1 FROM pg_database WHERE datname = $1", &[&db_name])
-        .await?;
-    if rows.is_empty() {
-        info!(db = db_name, "Creating database");
-        pg.batch_execute(&format!("CREATE DATABASE \"{db_name}\""))
-            .await?;
-    }
-
-    // Create app role if needed, publish credentials to SSM
-    let role_name = format!("{project}_app");
-    let role_rows = pg
-        .query("SELECT 1 FROM pg_roles WHERE rolname = $1", &[&role_name])
-        .await?;
-    if role_rows.is_empty() {
-        let password = generate_password();
-        info!(project, role = role_name, "Creating application role");
-
-        pg.batch_execute(&format!(
-            "CREATE ROLE \"{role_name}\" LOGIN PASSWORD '{password}'"
-        ))
-        .await?;
-
-        publish_app_ssm(ssm, project, &role_name, &password, db_name).await?;
-
-        info!(
-            project,
-            role = role_name,
-            "App role created and credentials published to SSM"
-        );
-    } else if !app_ssm_complete(ssm, project).await {
-        // Role exists but one or more SSM params are missing. The original password is
-        // unrecoverable (random, never echoed anywhere except to SSM). Rotate and republish.
-        warn!(
-            project,
-            role = role_name,
-            "App role exists but SSM credentials are incomplete — rotating password and republishing"
-        );
-        let password = generate_password();
-        pg.batch_execute(&format!(
-            "ALTER ROLE \"{role_name}\" WITH PASSWORD '{password}'"
-        ))
-        .await?;
-        publish_app_ssm(ssm, project, &role_name, &password, db_name).await?;
-        info!(
-            project,
-            role = role_name,
-            "App role password rotated and SSM republished"
-        );
-    }
-
-    // Create reader role if needed, publish credentials to SSM
-    let reader_name = format!("{project}_reader");
-    let reader_rows = pg
-        .query("SELECT 1 FROM pg_roles WHERE rolname = $1", &[&reader_name])
-        .await?;
-    if reader_rows.is_empty() {
-        let password = generate_password();
-        info!(project, role = reader_name, "Creating reader role");
-
-        pg.batch_execute(&format!(
-            "CREATE ROLE \"{reader_name}\" LOGIN PASSWORD '{password}'"
-        ))
-        .await?;
-
-        publish_reader_ssm(ssm, project, &reader_name, &password).await?;
-
-        info!(
-            project,
-            role = reader_name,
-            "Reader role created and credentials published to SSM"
-        );
-    } else if !reader_ssm_complete(ssm, project).await {
-        warn!(
-            project,
-            role = reader_name,
-            "Reader role exists but SSM credentials are incomplete — rotating password and republishing"
-        );
-        let password = generate_password();
-        pg.batch_execute(&format!(
-            "ALTER ROLE \"{reader_name}\" WITH PASSWORD '{password}'"
-        ))
-        .await?;
-        publish_reader_ssm(ssm, project, &reader_name, &password).await?;
-        info!(
-            project,
-            role = reader_name,
-            "Reader role password rotated and SSM republished"
-        );
-    }
-
-    // Always ensure grants are in place (idempotent — covers fresh databases after drop)
-    pg.batch_execute(&format!(
-        "GRANT ALL PRIVILEGES ON DATABASE \"{db_name}\" TO \"{role_name}\";
-         GRANT CONNECT ON DATABASE \"{db_name}\" TO \"{reader_name}\";"
-    ))
-    .await?;
-
-    // Grant app role membership to admin so ALTER DEFAULT PRIVILEGES FOR ROLE works in PG16
-    pg.batch_execute(&format!("GRANT \"{role_name}\" TO CURRENT_USER"))
-        .await?;
-
-    let db = connect_to(db_name).await?;
-    db.batch_execute(&format!(
-        "GRANT ALL ON SCHEMA public TO \"{role_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"{role_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"{role_name}\";
-         GRANT ALL ON ALL TABLES IN SCHEMA public TO \"{role_name}\";
-         GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO \"{role_name}\";"
-    ))
-    .await?;
-
-    db.batch_execute(&format!(
-        "GRANT USAGE ON SCHEMA public TO \"{reader_name}\";
-         GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{reader_name}\";
-         GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{reader_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO \"{reader_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO \"{reader_name}\";
-         ALTER DEFAULT PRIVILEGES FOR ROLE \"{role_name}\" IN SCHEMA public GRANT SELECT ON TABLES TO \"{reader_name}\";
-         ALTER DEFAULT PRIVILEGES FOR ROLE \"{role_name}\" IN SCHEMA public GRANT SELECT ON SEQUENCES TO \"{reader_name}\";"
-    ))
-    .await?;
-
+    create_database_if_missing(&pg, db_name).await?;
+    let role_name = ensure_app_role(&pg, ssm, project, db_name).await?;
+    let reader_name = ensure_reader_role(&pg, ssm, project).await?;
+    grant_database_access(&pg, db_name, &role_name, &reader_name).await?;
+    grant_schema_access(db_name, &role_name, &reader_name).await?;
     Ok(())
 }
 
@@ -1090,6 +1155,59 @@ async fn restore(
 // Entry point
 // =============================================================================
 
+fn migration_upload_project(key: &str) -> Option<&str> {
+    let parts: Vec<&str> = key.split('/').collect();
+    if parts.len() < 3 || parts[0] != "migrations" {
+        return None;
+    }
+    if parts[2] == "rollback" || parts[2] == "seed" {
+        return None;
+    }
+    Some(parts[1])
+}
+
+async fn handle_s3_event(
+    s3: &S3Client,
+    ssm: &SsmClient,
+    detail: S3Detail,
+) -> Result<Response, Error> {
+    let key = detail.object.key;
+    let Some(project) = migration_upload_project(&key) else {
+        warn!(key, "Ignoring non-migration upload");
+        return Err("ignored".into());
+    };
+    let cfg = require_project(project)?;
+    migrate(s3, ssm, project, &cfg).await
+}
+
+async fn handle_manual_event(
+    s3: &S3Client,
+    ssm: &SsmClient,
+    operation: String,
+    project: String,
+    target: Option<String>,
+    comment: Option<String>,
+) -> Result<Response, Error> {
+    let cfg = require_project(&project)?;
+    match operation.as_str() {
+        "migrate" => migrate(s3, ssm, &project, &cfg).await,
+        "rollback" => rollback(s3, ssm, &project, &cfg, target.as_deref()).await,
+        "seed" => seed(s3, ssm, &project, &cfg).await,
+        "drop" => drop_db(&project, &cfg).await,
+        "noop" => {
+            let t = target.as_deref().ok_or("noop requires target")?;
+            let c = comment.as_deref().ok_or("noop requires comment")?;
+            noop(s3, ssm, &project, &cfg, t, c).await
+        }
+        "restore" => {
+            let t = target.as_deref().ok_or("restore requires target")?;
+            let c = comment.as_deref().ok_or("restore requires comment")?;
+            restore(s3, ssm, &project, &cfg, t, c).await
+        }
+        _ => Err(format!("Unknown operation: {operation}").into()),
+    }
+}
+
 async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Value, Error> {
     let (payload, _ctx) = event.into_parts();
     info!(event = %payload, "Event received");
@@ -1101,46 +1219,19 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Va
     let evt: MigrationEvent = serde_json::from_value(payload)?;
 
     let response = match evt {
-        MigrationEvent::S3Event { detail } => {
-            let key = &detail.object.key;
-            let parts: Vec<&str> = key.split('/').collect();
-            if parts.len() < 3 || parts[0] != "migrations" {
-                warn!(key, "Ignoring non-migration upload");
+        MigrationEvent::S3Event { detail } => match handle_s3_event(&s3, &ssm, detail).await {
+            Ok(response) => response,
+            Err(e) if e.to_string() == "ignored" => {
                 return Ok(serde_json::json!({"status": "ignored"}));
             }
-            let project = parts[1];
-            if parts[2] == "rollback" || parts[2] == "seed" {
-                info!(key, project, "Ignoring rollback/seed upload");
-                return Ok(serde_json::json!({"status": "ignored"}));
-            }
-            let cfg = require_project(project)?;
-            migrate(&s3, &ssm, project, &cfg).await?
-        }
+            Err(e) => return Err(e),
+        },
         MigrationEvent::Manual {
             operation,
             project,
             target,
             comment,
-        } => {
-            let cfg = require_project(&project)?;
-            match operation.as_str() {
-                "migrate" => migrate(&s3, &ssm, &project, &cfg).await?,
-                "rollback" => rollback(&s3, &ssm, &project, &cfg, target.as_deref()).await?,
-                "seed" => seed(&s3, &ssm, &project, &cfg).await?,
-                "drop" => drop_db(&project, &cfg).await?,
-                "noop" => {
-                    let t = target.as_deref().ok_or("noop requires target")?;
-                    let c = comment.as_deref().ok_or("noop requires comment")?;
-                    noop(&s3, &ssm, &project, &cfg, t, c).await?
-                }
-                "restore" => {
-                    let t = target.as_deref().ok_or("restore requires target")?;
-                    let c = comment.as_deref().ok_or("restore requires comment")?;
-                    restore(&s3, &ssm, &project, &cfg, t, c).await?
-                }
-                _ => return Err(format!("Unknown operation: {operation}").into()),
-            }
-        }
+        } => handle_manual_event(&s3, &ssm, operation, project, target, comment).await?,
     };
 
     Ok(serde_json::to_value(response)?)

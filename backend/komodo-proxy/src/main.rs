@@ -310,12 +310,7 @@ async fn handle_deploy_stack(komodo: &KomodoClient, stack: &str) -> ActionResult
     }
 }
 
-async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Value, Error> {
-    let (payload, _ctx) = event.into_parts();
-    info!(event = %payload, "Komodo proxy invoked");
-
-    let request: Request = serde_json::from_value(payload)?;
-
+async fn build_komodo_client() -> Result<(SsmClient, KomodoClient), Error> {
     let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
     let ssm = SsmClient::new(&aws_config);
 
@@ -334,38 +329,47 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Va
         api_secret,
     };
 
+    Ok((ssm, komodo))
+}
+
+async fn execute_action(
+    ssm: &SsmClient,
+    komodo: &KomodoClient,
+    action: &KomodoAction,
+) -> ActionResult {
+    match action {
+        KomodoAction::SetVariables { variables, secret } => {
+            handle_set_variables(ssm, komodo, variables, *secret).await
+        }
+        KomodoAction::SetEnvironment { stack, variables } => {
+            handle_set_environment(ssm, komodo, stack, variables).await
+        }
+        KomodoAction::ListServers => handle_list_servers(komodo).await,
+        KomodoAction::CreateStack {
+            name,
+            server,
+            repo,
+            branch,
+            file_paths,
+            git_provider,
+        } => {
+            handle_create_stack(komodo, name, server, repo, branch, file_paths, git_provider).await
+        }
+        KomodoAction::DeployStack { stack } => handle_deploy_stack(komodo, stack).await,
+    }
+}
+
+async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Value, Error> {
+    let (payload, _ctx) = event.into_parts();
+    info!(event = %payload, "Komodo proxy invoked");
+
+    let request: Request = serde_json::from_value(payload)?;
+    let (ssm, komodo) = build_komodo_client().await?;
+
     let mut results = Vec::new();
 
     for action in &request.actions {
-        let result = match action {
-            KomodoAction::SetVariables { variables, secret } => {
-                handle_set_variables(&ssm, &komodo, variables, *secret).await
-            }
-            KomodoAction::SetEnvironment { stack, variables } => {
-                handle_set_environment(&ssm, &komodo, stack, variables).await
-            }
-            KomodoAction::ListServers => handle_list_servers(&komodo).await,
-            KomodoAction::CreateStack {
-                name,
-                server,
-                repo,
-                branch,
-                file_paths,
-                git_provider,
-            } => {
-                handle_create_stack(
-                    &komodo,
-                    name,
-                    server,
-                    repo,
-                    branch,
-                    file_paths,
-                    git_provider,
-                )
-                .await
-            }
-            KomodoAction::DeployStack { stack } => handle_deploy_stack(&komodo, stack).await,
-        };
+        let result = execute_action(&ssm, &komodo, action).await;
 
         let failed = !result.success;
         if failed {

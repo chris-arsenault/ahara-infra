@@ -39,24 +39,32 @@ fn generate_password() -> String {
         .collect()
 }
 
-async fn connect_admin(ssm: &SsmClient) -> Result<Client, Error> {
-    let t0 = Instant::now();
+fn postgres_connect_error(prefix: &str, error: &tokio_postgres::Error, start: Instant) -> String {
+    let mut msg = format!("{prefix} after {}ms: {error}", start.elapsed().as_millis());
+    let err: &dyn StdError = error;
+    let mut source = err.source();
+    while let Some(s) = source {
+        msg.push_str(&format!(" caused by: {s}"));
+        source = s.source();
+    }
+    msg
+}
 
-    let host = env::var("PG_HOST")?;
-    let port = env::var("PG_PORT").unwrap_or_else(|_| "5432".into());
-    info!(host = host, port = port, "Step 1: env vars read");
-
-    let t1 = Instant::now();
-    let user = ssm
-        .get_parameter()
-        .name("/ahara/truenas/pg-admin-user")
+async fn fetch_ssm_value(ssm: &SsmClient, name: &str, label: &str) -> Result<String, Error> {
+    ssm.get_parameter()
+        .name(name)
         .with_decryption(true)
         .send()
         .await
-        .map_err(|e| format!("Failed to read admin user from SSM: {e}"))?
+        .map_err(|e| format!("Failed to read {label} from SSM: {e}"))?
         .parameter()
         .and_then(|p| p.value().map(|v| v.to_string()))
-        .ok_or("SSM param /ahara/truenas/pg-admin-user has no value")?;
+        .ok_or_else(|| format!("SSM param {name} has no value").into())
+}
+
+async fn fetch_admin_credentials(ssm: &SsmClient) -> Result<(String, String), Error> {
+    let t1 = Instant::now();
+    let user = fetch_ssm_value(ssm, "/ahara/truenas/pg-admin-user", "admin user").await?;
     info!(
         elapsed_ms = t1.elapsed().as_millis(),
         user = user,
@@ -64,63 +72,186 @@ async fn connect_admin(ssm: &SsmClient) -> Result<Client, Error> {
     );
 
     let t2 = Instant::now();
-    let password = ssm
-        .get_parameter()
-        .name("/ahara/truenas/pg-admin-password")
-        .with_decryption(true)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to read admin password from SSM: {e}"))?
-        .parameter()
-        .and_then(|p| p.value().map(|v| v.to_string()))
-        .ok_or("SSM param /ahara/truenas/pg-admin-password has no value")?;
+    let password =
+        fetch_ssm_value(ssm, "/ahara/truenas/pg-admin-password", "admin password").await?;
     info!(
         elapsed_ms = t2.elapsed().as_millis(),
         "Step 3: SSM admin password retrieved"
     );
 
-    info!(
-        host = host,
-        port = port,
-        user = user,
-        total_ssm_ms = t1.elapsed().as_millis(),
-        "Step 4: Attempting Postgres connect"
-    );
-    let connstr =
-        format!("host={host} port={port} user={user} password={password} dbname=postgres");
-    let t3 = Instant::now();
-    // TrueNAS Postgres is on LAN via VPN, no TLS needed
-    let (client, connection) = tokio_postgres::connect(&connstr, NoTls)
-        .await
-        .map_err(|e| {
-            let mut msg = format!(
-                "Postgres connect failed after {}ms: {e}",
-                t3.elapsed().as_millis()
-            );
-            let err: &dyn StdError = &e;
-            let mut source = err.source();
-            while let Some(s) = source {
-                msg.push_str(&format!(" caused by: {s}"));
-                source = s.source();
-            }
-            msg
-        })?;
-    info!(
-        elapsed_ms = t3.elapsed().as_millis(),
-        "Step 5: Postgres connected"
-    );
+    Ok((user, password))
+}
 
+fn spawn_connection_task(
+    connection: tokio_postgres::Connection<
+        tokio_postgres::Socket,
+        tokio_postgres::tls::NoTlsStream,
+    >,
+) {
     tokio::spawn(async move {
         if let Err(e) = connection.await {
             error!("DB connection error: {e}");
         }
     });
+}
 
+fn postgres_env() -> Result<(String, String), Error> {
+    let host = env::var("PG_HOST")?;
+    let port = env::var("PG_PORT").unwrap_or_else(|_| "5432".into());
+    Ok((host, port))
+}
+
+fn admin_connstr(host: &str, port: &str, user: &str, password: &str) -> String {
+    format!("host={host} port={port} user={user} password={password} dbname=postgres")
+}
+
+async fn connect_postgres(connstr: &str, error_prefix: &str) -> Result<Client, Error> {
+    let connect_start = Instant::now();
+    let (client, connection) = tokio_postgres::connect(connstr, NoTls)
+        .await
+        .map_err(|e| postgres_connect_error(error_prefix, &e, connect_start))?;
+    spawn_connection_task(connection);
+    Ok(client)
+}
+
+async fn admin_connection_context(
+    ssm: &SsmClient,
+    start: Instant,
+) -> Result<(String, String, String), Error> {
+    let (host, port) = postgres_env()?;
+    info!(host = host, port = port, "Step 1: env vars read");
+
+    let (user, password) = fetch_admin_credentials(ssm).await?;
+    info!(
+        host = host,
+        port = port,
+        user = user,
+        total_ssm_ms = start.elapsed().as_millis(),
+        "Step 4: Attempting Postgres connect"
+    );
+    let connstr = admin_connstr(&host, &port, &user, &password);
+    Ok((host, port, connstr))
+}
+
+async fn connect_admin(ssm: &SsmClient) -> Result<Client, Error> {
+    let t0 = Instant::now();
+    let (_host, _port, connstr) = admin_connection_context(ssm, t0).await?;
+    let client = connect_postgres(&connstr, "Postgres connect failed").await?;
+    info!("Step 5: Postgres connected");
     info!(
         total_ms = t0.elapsed().as_millis(),
         "Step 6: connect_admin complete"
     );
     Ok(client)
+}
+
+async fn create_database_if_missing(
+    pg: &Client,
+    project: &str,
+    db_name: &str,
+) -> Result<bool, Error> {
+    let db_rows = pg
+        .query("SELECT 1 FROM pg_database WHERE datname = $1", &[&db_name])
+        .await
+        .map_err(|e| format!("Failed to query pg_database: {e}"))?;
+    if !db_rows.is_empty() {
+        return Ok(false);
+    }
+
+    info!(project, db = db_name, "Creating database");
+    pg.batch_execute(&format!("CREATE DATABASE \"{db_name}\""))
+        .await
+        .map_err(|e| format!("Failed to CREATE DATABASE {db_name}: {e}"))?;
+    Ok(true)
+}
+
+async fn create_role_if_missing(
+    pg: &Client,
+    ssm: &SsmClient,
+    project: &str,
+    db_name: &str,
+    role_name: &str,
+    ssm_prefix: &str,
+) -> Result<bool, Error> {
+    let role_rows = pg
+        .query("SELECT 1 FROM pg_roles WHERE rolname = $1", &[&role_name])
+        .await
+        .map_err(|e| format!("Failed to query pg_roles: {e}"))?;
+    if !role_rows.is_empty() {
+        return Ok(false);
+    }
+
+    let password = generate_password();
+    info!(project, role = role_name, "Creating application role");
+
+    pg.batch_execute(&format!(
+        "CREATE ROLE \"{role_name}\" LOGIN PASSWORD '{password}'"
+    ))
+    .await
+    .map_err(|e| format!("Failed to CREATE ROLE {role_name}: {e}"))?;
+
+    ssm.put_parameter()
+        .name(format!("{ssm_prefix}/username"))
+        .r#type(aws_sdk_ssm::types::ParameterType::String)
+        .value(role_name)
+        .overwrite(true)
+        .send()
+        .await?;
+
+    ssm.put_parameter()
+        .name(format!("{ssm_prefix}/password"))
+        .r#type(aws_sdk_ssm::types::ParameterType::SecureString)
+        .value(&password)
+        .overwrite(true)
+        .send()
+        .await?;
+
+    ssm.put_parameter()
+        .name(format!("{ssm_prefix}/database"))
+        .r#type(aws_sdk_ssm::types::ParameterType::String)
+        .value(db_name)
+        .overwrite(true)
+        .send()
+        .await?;
+
+    info!(project, role = role_name, "Credentials published to SSM");
+    Ok(true)
+}
+
+async fn connect_project_database(ssm: &SsmClient, db_name: &str) -> Result<Client, Error> {
+    let host = env::var("PG_HOST")?;
+    let port = env::var("PG_PORT").unwrap_or_else(|_| "5432".into());
+    let (user, password) = fetch_admin_credentials(ssm).await?;
+    let connstr =
+        format!("host={host} port={port} user={user} password={password} dbname={db_name}");
+    let connect_start = Instant::now();
+    let (db, connection) = tokio_postgres::connect(&connstr, NoTls)
+        .await
+        .map_err(|e| {
+            postgres_connect_error(
+                &format!("Failed to connect to database {db_name}"),
+                &e,
+                connect_start,
+            )
+        })?;
+    spawn_connection_task(connection);
+    Ok(db)
+}
+
+async fn grant_project_schema_access(
+    db: &Client,
+    db_name: &str,
+    role_name: &str,
+) -> Result<(), Error> {
+    db.batch_execute(&format!(
+        "GRANT ALL ON SCHEMA public TO \"{role_name}\";
+         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"{role_name}\";
+         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"{role_name}\";
+         GRANT ALL ON ALL TABLES IN SCHEMA public TO \"{role_name}\";
+         GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO \"{role_name}\";"
+    ))
+    .await
+    .map_err(|e| format!("Failed to set schema grants for {role_name} on {db_name}: {e}").into())
 }
 
 async fn ensure_database(
@@ -132,115 +263,17 @@ async fn ensure_database(
     let db_name = &config.db_name;
     let role_name = format!("{project}_app");
     let ssm_prefix = format!("/ahara/truenas-db/{project}");
-    let mut created = false;
+    let mut created = create_database_if_missing(pg, project, db_name).await?;
+    created |= create_role_if_missing(pg, ssm, project, db_name, &role_name, &ssm_prefix).await?;
 
-    // Create database if needed
-    let db_rows = pg
-        .query("SELECT 1 FROM pg_database WHERE datname = $1", &[db_name])
-        .await
-        .map_err(|e| format!("Failed to query pg_database: {e}"))?;
-    if db_rows.is_empty() {
-        info!(project, db = db_name, "Creating database");
-        pg.batch_execute(&format!("CREATE DATABASE \"{db_name}\""))
-            .await
-            .map_err(|e| format!("Failed to CREATE DATABASE {db_name}: {e}"))?;
-        created = true;
-    }
-
-    // Create role if needed
-    let role_rows = pg
-        .query("SELECT 1 FROM pg_roles WHERE rolname = $1", &[&role_name])
-        .await
-        .map_err(|e| format!("Failed to query pg_roles: {e}"))?;
-    if role_rows.is_empty() {
-        let password = generate_password();
-        info!(project, role = role_name, "Creating application role");
-
-        pg.batch_execute(&format!(
-            "CREATE ROLE \"{role_name}\" LOGIN PASSWORD '{password}'"
-        ))
-        .await
-        .map_err(|e| format!("Failed to CREATE ROLE {role_name}: {e}"))?;
-
-        // Publish credentials to SSM
-        ssm.put_parameter()
-            .name(format!("{ssm_prefix}/username"))
-            .r#type(aws_sdk_ssm::types::ParameterType::String)
-            .value(&role_name)
-            .overwrite(true)
-            .send()
-            .await?;
-
-        ssm.put_parameter()
-            .name(format!("{ssm_prefix}/password"))
-            .r#type(aws_sdk_ssm::types::ParameterType::SecureString)
-            .value(&password)
-            .overwrite(true)
-            .send()
-            .await?;
-
-        ssm.put_parameter()
-            .name(format!("{ssm_prefix}/database"))
-            .r#type(aws_sdk_ssm::types::ParameterType::String)
-            .value(db_name)
-            .overwrite(true)
-            .send()
-            .await?;
-
-        info!(project, role = role_name, "Credentials published to SSM");
-        created = true;
-    }
-
-    // Always ensure grants (idempotent)
     pg.batch_execute(&format!(
         "GRANT ALL PRIVILEGES ON DATABASE \"{db_name}\" TO \"{role_name}\""
     ))
     .await
     .map_err(|e| format!("Failed to GRANT on database {db_name}: {e}"))?;
 
-    // Connect to the project database to set schema grants
-    let host = env::var("PG_HOST")?;
-    let port = env::var("PG_PORT").unwrap_or_else(|_| "5432".into());
-    let user = ssm
-        .get_parameter()
-        .name("/ahara/truenas/pg-admin-user")
-        .with_decryption(true)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to read admin user from SSM: {e}"))?
-        .parameter()
-        .and_then(|p| p.value().map(|v| v.to_string()))
-        .ok_or("SSM param /ahara/truenas/pg-admin-user has no value")?;
-    let password = ssm
-        .get_parameter()
-        .name("/ahara/truenas/pg-admin-password")
-        .with_decryption(true)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to read admin password from SSM: {e}"))?
-        .parameter()
-        .and_then(|p| p.value().map(|v| v.to_string()))
-        .ok_or("SSM param /ahara/truenas/pg-admin-password has no value")?;
-    let connstr =
-        format!("host={host} port={port} user={user} password={password} dbname={db_name}");
-    let (db, conn) = tokio_postgres::connect(&connstr, NoTls)
-        .await
-        .map_err(|e| format!("Failed to connect to database {db_name}: {e}"))?;
-    tokio::spawn(async move {
-        if let Err(e) = conn.await {
-            error!("DB connection error: {e}");
-        }
-    });
-
-    db.batch_execute(&format!(
-        "GRANT ALL ON SCHEMA public TO \"{role_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"{role_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"{role_name}\";
-         GRANT ALL ON ALL TABLES IN SCHEMA public TO \"{role_name}\";
-         GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO \"{role_name}\";"
-    ))
-    .await
-    .map_err(|e| format!("Failed to set schema grants for {role_name} on {db_name}: {e}"))?;
+    let db = connect_project_database(ssm, db_name).await?;
+    grant_project_schema_access(&db, db_name, &role_name).await?;
 
     info!(project, db = db_name, role = role_name, "Database ready");
 
