@@ -94,9 +94,9 @@ resource "aws_lambda_function" "db_migrate_truenas" {
 
   environment {
     variables = {
-      PG_HOST        = "192.168.66.3"
-      PG_PORT        = "5432"
-      DB_STACK_MAP   = jsonencode({ for k, v in var.truenas_db_stacks : k => v })
+      PG_HOST      = "192.168.66.3"
+      PG_PORT      = "5432"
+      DB_STACK_MAP = jsonencode({ for k, v in var.truenas_db_stacks : k => v })
     }
   }
 }
