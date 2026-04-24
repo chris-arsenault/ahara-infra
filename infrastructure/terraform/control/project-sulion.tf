@@ -23,5 +23,6 @@ module "project_sulion" {
   ssm_additional_parameter_paths = [
     "ahara/cognito/*",
     "ahara/auth-trigger/clients/*",
+    "ahara/sulion/*",
   ]
 }
