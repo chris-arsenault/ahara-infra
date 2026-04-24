@@ -6,12 +6,31 @@
 # TrueNAS Postgres only.
 # =============================================================================
 
-variable "truenas_db_projects" {
-  description = "Registered TrueNAS database projects"
-  type        = map(object({ db_name = string }))
+variable "truenas_db_stacks" {
+  description = "TrueNAS database registrations grouped under the owning stack"
+  type = map(object({
+    databases = map(object({
+      db_name = string
+    }))
+  }))
   default = {
-    sonarqube = { db_name = "sonarqube" }
-    sulion    = { db_name = "sulion" }
+    sonarqube = {
+      databases = {
+        app = {
+          db_name = "sonarqube"
+        }
+      }
+    }
+    sulion = {
+      databases = {
+        app = {
+          db_name = "sulion"
+        }
+        broker = {
+          db_name = "sulion_broker"
+        }
+      }
+    }
   }
 }
 
@@ -75,9 +94,9 @@ resource "aws_lambda_function" "db_migrate_truenas" {
 
   environment {
     variables = {
-      PG_HOST     = "192.168.66.3"
-      PG_PORT     = "5432"
-      PROJECT_MAP = jsonencode({ for k, v in var.truenas_db_projects : k => v })
+      PG_HOST        = "192.168.66.3"
+      PG_PORT        = "5432"
+      DB_STACK_MAP   = jsonencode({ for k, v in var.truenas_db_stacks : k => v })
     }
   }
 }

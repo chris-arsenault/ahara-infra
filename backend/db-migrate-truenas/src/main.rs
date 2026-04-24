@@ -10,25 +10,37 @@ use tokio_postgres::{Client, NoTls};
 use tracing::{error, info};
 
 #[derive(Deserialize)]
-struct ProjectConfig {
+struct DatabaseConfig {
     db_name: String,
 }
 
 #[derive(Deserialize)]
-struct Request {
-    project: String,
+struct StackRegistration {
+    databases: HashMap<String, DatabaseConfig>,
 }
 
 #[derive(Serialize)]
-struct Response {
-    project: String,
+struct DatabaseResult {
+    database_id: String,
     db_name: String,
     created: bool,
 }
 
-fn get_project_map() -> HashMap<String, ProjectConfig> {
-    serde_json::from_str(&env::var("PROJECT_MAP").expect("PROJECT_MAP not set"))
-        .expect("Invalid PROJECT_MAP JSON")
+#[derive(Serialize)]
+struct Response {
+    stack_name: String,
+    databases: Vec<DatabaseResult>,
+}
+
+#[derive(Deserialize)]
+struct Request {
+    stack_name: String,
+    database_ids: Option<Vec<String>>,
+}
+
+fn get_database_registry() -> HashMap<String, StackRegistration> {
+    serde_json::from_str(&env::var("DB_STACK_MAP").expect("DB_STACK_MAP not set"))
+        .expect("Invalid DB_STACK_MAP JSON")
 }
 
 fn generate_password() -> String {
@@ -147,7 +159,7 @@ async fn connect_admin(ssm: &SsmClient) -> Result<Client, Error> {
 
 async fn create_database_if_missing(
     pg: &Client,
-    project: &str,
+    database_id: &str,
     db_name: &str,
 ) -> Result<bool, Error> {
     let db_rows = pg
@@ -158,7 +170,7 @@ async fn create_database_if_missing(
         return Ok(false);
     }
 
-    info!(project, db = db_name, "Creating database");
+    info!(database_id, db = db_name, "Creating database");
     pg.batch_execute(&format!("CREATE DATABASE \"{db_name}\""))
         .await
         .map_err(|e| format!("Failed to CREATE DATABASE {db_name}: {e}"))?;
@@ -168,7 +180,7 @@ async fn create_database_if_missing(
 async fn create_role_if_missing(
     pg: &Client,
     ssm: &SsmClient,
-    project: &str,
+    database_id: &str,
     db_name: &str,
     role_name: &str,
     ssm_prefix: &str,
@@ -182,7 +194,7 @@ async fn create_role_if_missing(
     }
 
     let password = generate_password();
-    info!(project, role = role_name, "Creating application role");
+    info!(database_id, role = role_name, "Creating application role");
 
     pg.batch_execute(&format!(
         "CREATE ROLE \"{role_name}\" LOGIN PASSWORD '{password}'"
@@ -214,7 +226,11 @@ async fn create_role_if_missing(
         .send()
         .await?;
 
-    info!(project, role = role_name, "Credentials published to SSM");
+    info!(
+        database_id,
+        role = role_name,
+        "Credentials published to SSM"
+    );
     Ok(true)
 }
 
@@ -257,14 +273,16 @@ async fn grant_project_schema_access(
 async fn ensure_database(
     pg: &Client,
     ssm: &SsmClient,
-    project: &str,
-    config: &ProjectConfig,
-) -> Result<Response, Error> {
-    let db_name = &config.db_name;
-    let role_name = format!("{project}_app");
-    let ssm_prefix = format!("/ahara/truenas-db/{project}");
-    let mut created = create_database_if_missing(pg, project, db_name).await?;
-    created |= create_role_if_missing(pg, ssm, project, db_name, &role_name, &ssm_prefix).await?;
+    stack_name: &str,
+    database_id: &str,
+    database: &DatabaseConfig,
+) -> Result<DatabaseResult, Error> {
+    let db_name = &database.db_name;
+    let role_name = format!("{stack_name}_{database_id}_app");
+    let ssm_prefix = format!("/ahara/truenas-db/{stack_name}/{database_id}");
+    let mut created = create_database_if_missing(pg, database_id, db_name).await?;
+    created |=
+        create_role_if_missing(pg, ssm, database_id, db_name, &role_name, &ssm_prefix).await?;
 
     pg.batch_execute(&format!(
         "GRANT ALL PRIVILEGES ON DATABASE \"{db_name}\" TO \"{role_name}\""
@@ -275,10 +293,15 @@ async fn ensure_database(
     let db = connect_project_database(ssm, db_name).await?;
     grant_project_schema_access(&db, db_name, &role_name).await?;
 
-    info!(project, db = db_name, role = role_name, "Database ready");
+    info!(
+        database_id,
+        db = db_name,
+        role = role_name,
+        "Database ready"
+    );
 
-    Ok(Response {
-        project: project.to_string(),
+    Ok(DatabaseResult {
+        database_id: database_id.to_string(),
         db_name: db_name.to_string(),
         created,
     })
@@ -289,15 +312,30 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Va
     info!(event = %payload, "TrueNAS DB manage invoked");
 
     let request: Request = serde_json::from_value(payload)?;
-    let project_map = get_project_map();
-
-    let config = project_map.get(&request.project).ok_or_else(|| {
+    let registry = get_database_registry();
+    let stack = registry.get(&request.stack_name).ok_or_else(|| {
         format!(
-            "Project \"{}\" not registered. Registered: {:?}",
-            request.project,
-            project_map.keys().collect::<Vec<_>>()
+            "Stack \"{}\" not registered. Registered: {:?}",
+            request.stack_name,
+            registry.keys().collect::<Vec<_>>()
         )
     })?;
+
+    let mut database_ids = request.database_ids.unwrap_or_else(|| {
+        let mut ids = stack.databases.keys().cloned().collect::<Vec<_>>();
+        ids.sort();
+        ids
+    });
+
+    if database_ids.is_empty() {
+        return Err(format!(
+            "No TrueNAS databases registered for stack \"{}\"",
+            request.stack_name
+        )
+        .into());
+    }
+    database_ids.sort();
+    database_ids.dedup();
 
     let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
     let ssm = SsmClient::new(&aws_config);
@@ -308,14 +346,30 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Va
         msg
     })?;
 
-    let response = ensure_database(&pg, &ssm, &request.project, config)
-        .await
-        .map_err(|e| {
-            let msg = format!("ensure_database failed for {}: {e}", request.project);
-            error!(error = msg, "Database setup failed");
-            msg
+    let mut databases = Vec::with_capacity(database_ids.len());
+    for database_id in database_ids {
+        let database = stack.databases.get(&database_id).ok_or_else(|| {
+            format!(
+                "Database ID \"{}\" not registered for stack \"{}\". Registered: {:?}",
+                database_id,
+                request.stack_name,
+                stack.databases.keys().collect::<Vec<_>>()
+            )
         })?;
-    Ok(serde_json::to_value(response)?)
+        let result = ensure_database(&pg, &ssm, &request.stack_name, &database_id, database)
+            .await
+            .map_err(|e| {
+                let msg = format!("ensure_database failed for {database_id}: {e}");
+                error!(error = msg, "Database setup failed");
+                msg
+            })?;
+        databases.push(result);
+    }
+
+    Ok(serde_json::to_value(Response {
+        stack_name: request.stack_name,
+        databases,
+    })?)
 }
 
 #[tokio::main]
