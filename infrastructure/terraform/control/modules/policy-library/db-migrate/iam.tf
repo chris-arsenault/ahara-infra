@@ -60,4 +60,17 @@ data "aws_iam_policy_document" "this" {
     actions   = ["lambda:InvokeFunction"]
     resources = ["arn:aws:lambda:*:${var.account_id}:function:ahara-db-migrate"]
   }
+
+  statement {
+    sid    = "ReadDbConnectionParameters"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+    ]
+    resources = [
+      "arn:aws:ssm:*:${var.account_id}:parameter/ahara/db/${var.prefix}/*",
+      "arn:aws:ssm:*:${var.account_id}:parameter/ahara/rds/*",
+    ]
+  }
 }
