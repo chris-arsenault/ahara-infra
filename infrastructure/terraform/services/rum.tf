@@ -1,6 +1,7 @@
 resource "aws_cognito_identity_pool" "rum" {
   identity_pool_name               = "${local.prefix}-rum"
   allow_unauthenticated_identities = true
+  allow_classic_flow               = true
 
   tags = {
     Service = "browser-rum"
