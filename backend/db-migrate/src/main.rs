@@ -490,6 +490,33 @@ async fn reader_ssm_complete(ssm: &SsmClient, project: &str) -> bool {
     true
 }
 
+async fn repair_app_credentials_if_stale(
+    pg: &Client,
+    ssm: &SsmClient,
+    project: &str,
+    db_name: &str,
+    role_name: &str,
+) -> Result<(), Error> {
+    if let Err(error) = verify_app_login(project, db_name, ssm).await {
+        warn!(
+            project,
+            role = role_name,
+            error = %error,
+            "Stored app role credentials failed validation"
+        );
+        let password = rotate_app_role(pg, project, role_name).await?;
+        publish_app_ssm(ssm, project, role_name, &password, db_name).await?;
+        verify_app_login(project, db_name, ssm).await?;
+        info!(
+            project,
+            role = role_name,
+            "App role password rotated and verified"
+        );
+    }
+
+    Ok(())
+}
+
 /// Ensures the project database exists with an application role and SSM credentials.
 /// Creates database, app role, grants, and publishes credentials to SSM if needed.
 ///
@@ -503,25 +530,7 @@ async fn ensure_database(project: &str, db_name: &str, ssm: &SsmClient) -> Resul
     let reader_name = ensure_reader_role(&pg, ssm, project).await?;
     grant_database_access(&pg, db_name, &role_name, &reader_name).await?;
     grant_schema_access(db_name, &role_name, &reader_name).await?;
-
-    if let Err(error) = verify_app_login(project, db_name, ssm).await {
-        warn!(
-            project,
-            role = role_name,
-            error = %error,
-            "Stored app role credentials failed validation"
-        );
-        let password = rotate_app_role(&pg, project, &role_name).await?;
-        publish_app_ssm(ssm, project, &role_name, &password, db_name).await?;
-        verify_app_login(project, db_name, ssm).await?;
-        info!(
-            project,
-            role = role_name,
-            "App role password rotated and verified"
-        );
-    }
-
-    Ok(())
+    repair_app_credentials_if_stale(&pg, ssm, project, db_name, &role_name).await
 }
 
 async fn ensure_database_bare(db_name: &str) -> Result<(), Error> {
