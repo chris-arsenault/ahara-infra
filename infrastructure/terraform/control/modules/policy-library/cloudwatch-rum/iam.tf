@@ -1,5 +1,9 @@
 locals {
   app_monitor_arn = "arn:aws:rum:*:${var.account_id}:appmonitor/${var.prefix}-*"
+  vended_log_group_arns = [
+    "arn:aws:logs:*:${var.account_id}:log-group:/aws/vendedlogs/RUMService_${var.prefix}-*",
+    "arn:aws:logs:*:${var.account_id}:log-group:/aws/vendedlogs/RUMService_${var.prefix}-*:*",
+  ]
 }
 
 data "aws_iam_policy_document" "this" {
@@ -36,6 +40,16 @@ data "aws_iam_policy_document" "this" {
       "rum:ListTagsForResource",
     ]
     resources = ["*"]
+  }
+
+  statement {
+    sid    = "CloudWatchRumVendedLogGroups"
+    effect = "Allow"
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:DeleteLogGroup",
+    ]
+    resources = local.vended_log_group_arns
   }
 
   statement {
