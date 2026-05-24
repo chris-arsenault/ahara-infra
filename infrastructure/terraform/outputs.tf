@@ -16,6 +16,14 @@ output "cognito_client_ids" {
   value = module.services.cognito_client_ids
 }
 
+output "rum_identity_pool_id" {
+  value = module.services.rum_identity_pool_id
+}
+
+output "rum_guest_role_arn" {
+  value = module.services.rum_guest_role_arn
+}
+
 output "cognito_chris_password" {
   value     = module.services.cognito_chris_password
   sensitive = true

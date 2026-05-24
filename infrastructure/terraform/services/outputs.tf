@@ -19,6 +19,16 @@ output "alarm_topic_arn" {
   value       = aws_sns_topic.alarms.arn
 }
 
+output "rum_identity_pool_id" {
+  description = "Shared Cognito identity pool ID for browser CloudWatch RUM clients"
+  value       = aws_cognito_identity_pool.rum.id
+}
+
+output "rum_guest_role_arn" {
+  description = "Shared unauthenticated role ARN for browser CloudWatch RUM clients"
+  value       = aws_iam_role.rum_unauthenticated.arn
+}
+
 output "rds_endpoint" {
   description = "Shared RDS endpoint"
   value       = aws_db_instance.ahara.endpoint
