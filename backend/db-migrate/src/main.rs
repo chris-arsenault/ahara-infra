@@ -300,7 +300,7 @@ async fn rotate_app_role(pg: &Client, project: &str, role_name: &str) -> Result<
     warn!(
         project,
         role = role_name,
-        "App role exists but SSM credentials are incomplete — rotating password and republishing"
+        "App role credentials need repair — rotating password and republishing"
     );
     let password = generate_password();
     pg.batch_execute(&format!(
@@ -340,6 +340,12 @@ async fn ensure_app_role(
         "App role password rotated and SSM republished"
     );
     Ok(role_name)
+}
+
+async fn verify_app_login(project: &str, db_name: &str, ssm: &SsmClient) -> Result<(), Error> {
+    let db = connect_as_app(project, db_name, ssm).await?;
+    db.simple_query("SELECT 1").await?;
+    Ok(())
 }
 
 async fn create_reader_role(
@@ -487,9 +493,9 @@ async fn reader_ssm_complete(ssm: &SsmClient, project: &str) -> bool {
 /// Ensures the project database exists with an application role and SSM credentials.
 /// Creates database, app role, grants, and publishes credentials to SSM if needed.
 ///
-/// Self-healing: if a role already exists but its SSM credentials are missing (partial
-/// state from a previous run that failed between `CREATE ROLE` and `put_parameter`),
-/// rotate the role's password with `ALTER ROLE` and republish all SSM params.
+/// Self-healing: if a role already exists but its SSM credentials are missing
+/// or stale, rotate the role's password with `ALTER ROLE` and republish all SSM
+/// params.
 async fn ensure_database(project: &str, db_name: &str, ssm: &SsmClient) -> Result<(), Error> {
     let pg = connect_to("postgres").await?;
     create_database_if_missing(&pg, db_name).await?;
@@ -497,6 +503,24 @@ async fn ensure_database(project: &str, db_name: &str, ssm: &SsmClient) -> Resul
     let reader_name = ensure_reader_role(&pg, ssm, project).await?;
     grant_database_access(&pg, db_name, &role_name, &reader_name).await?;
     grant_schema_access(db_name, &role_name, &reader_name).await?;
+
+    if let Err(error) = verify_app_login(project, db_name, ssm).await {
+        warn!(
+            project,
+            role = role_name,
+            error = %error,
+            "Stored app role credentials failed validation"
+        );
+        let password = rotate_app_role(&pg, project, &role_name).await?;
+        publish_app_ssm(ssm, project, &role_name, &password, db_name).await?;
+        verify_app_login(project, db_name, ssm).await?;
+        info!(
+            project,
+            role = role_name,
+            "App role password rotated and verified"
+        );
+    }
+
     Ok(())
 }
 
