@@ -31,6 +31,9 @@ data "aws_iam_policy_document" "this" {
       "s3:PutBucketOwnershipControls",
       "s3:PutBucketWebsite",
       "s3:PutEncryptionConfiguration",
+      "s3:PutLifecycleConfiguration",
+      "s3:GetLifecycleConfiguration",
+      "s3:DeleteLifecycleConfiguration",
       "s3:GetEncryptionConfiguration",
       "s3:Get*"
     ]
