@@ -20,11 +20,5 @@ data "aws_iam_policy_document" "this" {
     effect    = "Allow"
     actions   = ["iam:PassRole"]
     resources = ["arn:aws:iam::${var.account_id}:role/${var.prefix}-*"]
-
-    condition {
-      test     = "StringEquals"
-      variable = "iam:PassedToService"
-      values   = ["cognito-identity.amazonaws.com"]
-    }
   }
 }
