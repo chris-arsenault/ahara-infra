@@ -27,11 +27,33 @@ data "aws_iam_policy_document" "this" {
     resources = ["arn:aws:lambda:*:${var.account_id}:function:${var.prefix}-*"]
   }
 
+  statement {
+    sid    = "LambdaLayerCrud"
+    effect = "Allow"
+    actions = [
+      "lambda:PublishLayerVersion",
+      "lambda:DeleteLayerVersion",
+      "lambda:GetLayerVersion",
+      "lambda:GetLayerVersionPolicy",
+      "lambda:AddLayerVersionPermission",
+      "lambda:RemoveLayerVersionPermission",
+      "lambda:TagResource",
+      "lambda:UntagResource",
+      "lambda:ListTags",
+    ]
+    resources = [
+      "arn:aws:lambda:*:${var.account_id}:layer:${var.prefix}-*",
+      "arn:aws:lambda:*:${var.account_id}:layer:${var.prefix}-*:*",
+    ]
+  }
+
   # These list operations do not support resource-level permissions.
   statement {
     sid    = "LambdaList"
     effect = "Allow"
     actions = [
+      "lambda:ListLayers",
+      "lambda:ListLayerVersions",
       "lambda:ListVersionsByFunction",
       "lambda:ListAliases"
     ]

@@ -27,6 +27,7 @@ data "aws_iam_policy_document" "this" {
       "s3:PutBucketTagging",
       "s3:PutBucketAcl",
       "s3:PutBucketCORS",
+      "s3:PutBucketNotification",
       "s3:PutBucketOwnershipControls",
       "s3:PutBucketWebsite",
       "s3:PutEncryptionConfiguration",

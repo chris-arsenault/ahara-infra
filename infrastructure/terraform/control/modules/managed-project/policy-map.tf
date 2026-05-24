@@ -59,6 +59,12 @@ module "cloudfront-distribution" {
   account_id = var.account_id
 }
 
+module "cloudwatch-rum" {
+  source     = "../policy-library/cloudwatch-rum"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 module "acm-dns" {
   source     = "../policy-library/acm-dns"
   prefix     = var.prefix
@@ -187,6 +193,7 @@ locals {
     "bedrock-inference"       = module.bedrock-inference.policy_json
     "s3-website"              = module.s3-website.policy_json
     "cloudfront-distribution" = module.cloudfront-distribution.policy_json
+    "cloudwatch-rum"          = module.cloudwatch-rum.policy_json
     "acm-dns"                 = module.acm-dns.policy_json
     "cognito-client"          = module.cognito-client.policy_json
     "cognito-pool"            = module.cognito-pool.policy_json

@@ -12,9 +12,11 @@ module "project_tsonu_music" {
   prefix           = "tsonu-music"
   state_key_prefix = "projects/tsonu-music"
 
-  module_bundles = ["website"]
+  module_bundles = ["website", "alb-api", "cognito-app"]
 
   policy_modules = [
     "terraform-state",
+    "cloudwatch-rum",
+    "db-migrate",
   ]
 }

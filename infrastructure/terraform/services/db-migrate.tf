@@ -18,6 +18,7 @@ variable "migration_projects" {
     svap              = { db_name = "svap" }
     dosekit           = { db_name = "dosekit" }
     tastebase         = { db_name = "tastebase" }
+    "tsonu-music"     = { db_name = "tsonu_music" }
   }
 }
 
