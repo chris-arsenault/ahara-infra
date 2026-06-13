@@ -125,6 +125,25 @@ module "sns" {
   account_id = var.account_id
 }
 
+module "ses" {
+  source                          = "../policy-library/ses"
+  prefix                          = var.prefix
+  account_id                      = var.account_id
+  additional_ses_identity_domains = var.additional_ses_identity_domains
+}
+
+module "s3_private_storage" {
+  source     = "../policy-library/s3-private-storage"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
+module "cloudwatch-alarms" {
+  source     = "../policy-library/cloudwatch-alarms"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 module "ssm-write" {
   source                     = "../policy-library/ssm-write"
   prefix                     = var.prefix
@@ -203,6 +222,9 @@ locals {
     "db-migrate"              = module.db-migrate.policy_json
     "rds"                     = module.rds.policy_json
     "sns"                     = module.sns.policy_json
+    "ses"                     = module.ses.policy_json
+    "s3-private-storage"      = module.s3_private_storage.policy_json
+    "cloudwatch-alarms"       = module.cloudwatch-alarms.policy_json
     "ssm-write"               = module.ssm-write.policy_json
     "secrets-manager"         = module.secrets-manager.policy_json
     "kms-admin"               = module.kms-admin.policy_json

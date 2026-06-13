@@ -25,7 +25,7 @@ variable "allow_pull_request" {
 }
 
 variable "policy_modules" {
-  description = "Individual policy primitives to attach to the deployer role (for things outside the ahara-tf-patterns shared modules)"
+  description = "Individual policy primitives to attach to the deployer role (for things outside the ahara-tf-patterns shared modules): terraform-state, db-migrate, dynamodb, bedrock-inference, sns, ses, s3-private-storage, cloudwatch-alarms, secrets-manager, komodo-deploy, ec2-vpc-compute, ec2-security-groups, rds, cognito-pool, control-plane, ssm-write, budgets-costexplorer."
   type        = set(string)
   default     = []
 }
@@ -44,6 +44,12 @@ variable "state_key_prefix" {
 variable "ssm_additional_parameter_paths" {
   description = "Additional SSM parameter path prefixes this project can write to (for ssm-write module)"
   type        = list(string)
+  default     = []
+}
+
+variable "additional_ses_identity_domains" {
+  description = "Exact SES identity domains this project may manage in addition to prefix-scoped identities."
+  type        = set(string)
   default     = []
 }
 

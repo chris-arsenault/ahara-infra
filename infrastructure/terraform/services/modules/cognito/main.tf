@@ -16,6 +16,7 @@ resource "aws_cognito_user_pool" "pool" {
 
   auto_verified_attributes = ["email"]
   alias_attributes         = ["email"]
+  mfa_configuration        = "ON"
 
   password_policy {
     minimum_length    = 8
@@ -30,6 +31,10 @@ resource "aws_cognito_user_pool" "pool" {
     content {
       pre_authentication = var.pre_auth_lambda_arn
     }
+  }
+
+  software_token_mfa_configuration {
+    enabled = true
   }
 }
 
