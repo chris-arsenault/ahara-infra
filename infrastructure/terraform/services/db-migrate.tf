@@ -17,6 +17,7 @@ variable "migration_projects" {
     "agents-of-glass" = { db_name = "agents_of_glass" }
     svap              = { db_name = "svap" }
     dosekit           = { db_name = "dosekit" }
+    linkdrop          = { db_name = "linkdrop" }
     tastebase         = { db_name = "tastebase" }
     "ahara-access"    = { db_name = "ahara_access" }
     "ahara-business"  = { db_name = "ahara_business" }
