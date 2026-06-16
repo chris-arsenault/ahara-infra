@@ -21,6 +21,13 @@ variable "truenas_db_stacks" {
         }
       }
     }
+    harbor = {
+      databases = {
+        app = {
+          db_name = "harbor"
+        }
+      }
+    }
     sulion = {
       databases = {
         app = {
