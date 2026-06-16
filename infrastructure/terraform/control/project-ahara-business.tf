@@ -20,6 +20,7 @@ module "project_ahara_business" {
   policy_modules = [
     "terraform-state",
     "db-migrate",
+    "dynamodb",
     "sns",
     "ses",
     "ssm-write",

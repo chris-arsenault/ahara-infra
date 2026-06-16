@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "auth_trigger_assume" {
 data "aws_iam_policy_document" "auth_trigger" {
   statement {
     actions   = ["dynamodb:GetItem"]
-    resources = [aws_dynamodb_table.user_access.arn]
+    resources = [aws_dynamodb_table.app_authorizations.arn]
   }
   statement {
     actions   = ["ssm:GetParameter"]
@@ -54,7 +54,7 @@ module "auth_trigger" {
   timeout  = 5
 
   environment = {
-    TABLE_NAME       = aws_dynamodb_table.user_access.name
+    TABLE_NAME       = aws_dynamodb_table.app_authorizations.name
     CLIENT_MAP_PARAM = "${local.ssm_prefix}/auth-trigger/client-map"
   }
 

@@ -13,7 +13,7 @@ locals {
   services_domain = "services.${var.domain_name}"
   auth_domain     = "auth.${local.services_domain}"
 
-  user_access_table_name = "${local.prefix}-user-access"
+  app_authorizations_table_name = "ahara-business-app-authorizations"
 
   # SSM parameter prefix for all shared config
   ssm_prefix = "/${local.prefix}"

@@ -26,11 +26,11 @@ module "cognito" {
 }
 
 # =============================================================================
-# User Access Table (gates per-app access via pre-auth Lambda)
+# App Authorizations Table (gates per-app access via pre-auth Lambda)
 # =============================================================================
 
-resource "aws_dynamodb_table" "user_access" {
-  name         = local.user_access_table_name
+resource "aws_dynamodb_table" "app_authorizations" {
+  name         = local.app_authorizations_table_name
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "username"
 
