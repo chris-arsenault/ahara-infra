@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "ahara-lambda-http"
+version = "0.1.0"
+dependencies = [
+ "lambda_http",
+ "percent-encoding",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+]
+
+[[package]]
 name = "ahara-lambda-telemetry"
 version = "0.1.0"
 dependencies = [

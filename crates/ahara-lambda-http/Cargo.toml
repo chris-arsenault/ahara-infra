@@ -1,0 +1,15 @@
+[package]
+name = "ahara-lambda-http"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ahara_lambda_http"
+path = "src/lib.rs"
+
+[dependencies]
+lambda_http.workspace = true
+percent-encoding.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_urlencoded.workspace = true

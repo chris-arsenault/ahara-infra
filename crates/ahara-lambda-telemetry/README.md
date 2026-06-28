@@ -13,19 +13,36 @@ The registered Ahara Rust Lambda repos currently use three entrypoint shapes:
 
 | Shape | Examples | Wrapper |
 | ---- | ---- | ---- |
-| `lambda_http::run(axum_router)` | `bookmarker`, `tastebase`, `ahara-business`, `dosekit`, `agents-of-glass` | `run_http_lambda` |
+| Legacy `lambda_http::run(axum_router)` | `bookmarker`, `tastebase`, `ahara-business`, `dosekit`, `ahara-access` | Migrate to `ahara-lambda-http` + `run_http_lambda` |
 | `lambda_http::run(service_fn(handler))` | `svap`, `tsonu-music`, platform CORS/OG/CI handlers | `run_http_lambda` |
 | `lambda_runtime::run(service_fn(handler))` | processing jobs, Cognito trigger, migrations, mail workers, encoders | `run_event_lambda` |
 
 ## HTTP Lambda
 
 ```rust
-use ahara_lambda_telemetry::{TelemetryConfig, run_http_lambda};
+use ahara_lambda_http::{default_cors, json_value_response, Route};
+use ahara_lambda_telemetry::{run_http_lambda, TelemetryConfig};
+use lambda_http::http::{Method, StatusCode};
+use lambda_http::{service_fn, Body, Error, Request, Response};
 
 #[tokio::main]
 async fn main() -> Result<(), lambda_http::Error> {
-    let app = build_router().await?;
-    run_http_lambda(TelemetryConfig::new("linkdrop-api"), app).await
+    run_http_lambda(
+        TelemetryConfig::new("linkdrop-api"),
+        service_fn(handle_request),
+    )
+    .await
+}
+
+async fn handle_request(request: Request) -> Result<Response<Body>, Error> {
+    let route = Route::from_request(&request);
+    let response = if route.is_match(Method::GET, "/health")? {
+        json_value_response(StatusCode::OK, serde_json::json!({"status": "ok"}))
+    } else {
+        json_value_response(StatusCode::NOT_FOUND, serde_json::json!({"message": "not found"}))
+    };
+
+    Ok(default_cors(response))
 }
 ```
 
@@ -78,6 +95,9 @@ that have migrated to this crate:
 cargo run -p ahara-lambda-telemetry --bin ahara-telemetry-adoption-check -- backend
 ```
 
-It flags direct `tracing_subscriber::fmt()` setup and direct
-`lambda_http::run` / `lambda_runtime::run` calls. Those should move behind this
-crate's wrappers so operational logging is not optional per Lambda.
+It flags direct `tracing_subscriber::fmt()` setup, direct `lambda_http::run` /
+`lambda_runtime::run` calls, and Lambda crates that use `run_http_lambda` or
+`run_event_lambda` without declaring at least one `Operation` span in the same
+Cargo package. Runtime setup belongs in the shared wrappers, and application
+work must have an explicit operation boundary so operational logging is not
+optional per Lambda.
