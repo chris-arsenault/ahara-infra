@@ -5,6 +5,7 @@ stack:
   - rust
   - terraform
 rust_dir: backend
+rust_shared_crates_dir: .
 rust_artifacts:
   lambdas:
     - auth-trigger
