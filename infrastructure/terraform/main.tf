@@ -44,6 +44,11 @@ module "control" {
 
 module "network" {
   source = "./network"
+
+  security_log_bucket_name        = aws_s3_bucket.security_logs.id
+  security_log_bucket_arn         = aws_s3_bucket.security_logs.arn
+  security_log_bucket_domain_name = aws_s3_bucket.security_logs.bucket_domain_name
+  security_log_bucket_policy_id   = aws_s3_bucket_policy.security_logs.id
 }
 
 module "services" {

@@ -8,6 +8,12 @@ resource "aws_sns_topic" "alarms" {
   name = "${local.prefix}-alarms"
 }
 
+resource "aws_sns_topic_subscription" "alarms_email" {
+  topic_arn = aws_sns_topic.alarms.arn
+  protocol  = "email"
+  endpoint  = var.seed_user_email
+}
+
 resource "aws_ssm_parameter" "alarm_topic_arn" {
   name  = "${local.ssm_prefix}/alarms/sns-topic-arn"
   type  = "String"

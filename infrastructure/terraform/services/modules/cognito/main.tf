@@ -6,11 +6,6 @@ locals {
   ]
 }
 
-data "aws_route53_zone" "primary" {
-  name         = "${var.domain_zone_name}."
-  private_zone = false
-}
-
 resource "aws_cognito_user_pool" "pool" {
   name = var.user_pool_name
 
@@ -46,7 +41,7 @@ resource "aws_acm_certificate" "domain" {
 resource "aws_route53_record" "cert_validation" {
   for_each = toset([var.domain_name])
 
-  zone_id = data.aws_route53_zone.primary.zone_id
+  zone_id = var.domain_zone_id
   name = one([
     for dvo in aws_acm_certificate.domain.domain_validation_options : dvo.resource_record_name
     if dvo.domain_name == each.value
@@ -76,7 +71,7 @@ resource "aws_cognito_user_pool_domain" "domain" {
 }
 
 resource "aws_route53_record" "domain" {
-  zone_id = data.aws_route53_zone.primary.zone_id
+  zone_id = var.domain_zone_id
   name    = var.domain_name
   type    = "CNAME"
   ttl     = 300

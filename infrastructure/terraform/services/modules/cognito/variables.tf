@@ -8,8 +8,8 @@ variable "domain_name" {
   type        = string
 }
 
-variable "domain_zone_name" {
-  description = "Route53 hosted zone name for the Cognito domain"
+variable "domain_zone_id" {
+  description = "Route53 hosted zone id for the Cognito domain"
   type        = string
 }
 

@@ -8,6 +8,28 @@ resource "aws_wafv2_web_acl" "alb" {
   }
 
   rule {
+    name     = "AWS-AWSManagedRulesAmazonIpReputationList"
+    priority = 0
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesAmazonIpReputationList"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.prefix}-ip-reputation"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
     name     = "AWS-AWSManagedRulesCommonRuleSet"
     priority = 1
 
@@ -98,6 +120,50 @@ resource "aws_wafv2_web_acl" "alb" {
     }
   }
 
+  rule {
+    name     = "AWS-AWSManagedRulesAnonymousIpList"
+    priority = 3
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        vendor_name = "AWS"
+        name        = "AWSManagedRulesAnonymousIpList"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.prefix}-anonymous-ip"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "RateLimitByIp"
+    priority = 4
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        aggregate_key_type = "IP"
+        limit              = 2000
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.prefix}-rate-limit-ip"
+      sampled_requests_enabled   = true
+    }
+  }
+
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                = "${local.prefix}-alb-waf"
@@ -112,4 +178,32 @@ resource "aws_wafv2_web_acl" "alb" {
 resource "aws_wafv2_web_acl_association" "alb" {
   resource_arn = aws_lb.reverse_proxy.arn
   web_acl_arn  = aws_wafv2_web_acl.alb.arn
+}
+
+resource "aws_cloudwatch_log_group" "waf_alb" {
+  name              = "aws-waf-logs-${local.prefix}-alb"
+  retention_in_days = 90
+}
+
+resource "aws_wafv2_web_acl_logging_configuration" "alb" {
+  resource_arn            = aws_wafv2_web_acl.alb.arn
+  log_destination_configs = [aws_cloudwatch_log_group.waf_alb.arn]
+
+  redacted_fields {
+    single_header {
+      name = "authorization"
+    }
+  }
+
+  redacted_fields {
+    single_header {
+      name = "cookie"
+    }
+  }
+
+  redacted_fields {
+    single_header {
+      name = "x-api-key"
+    }
+  }
 }

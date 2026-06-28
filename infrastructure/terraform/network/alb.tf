@@ -7,12 +7,27 @@ resource "aws_lb" "reverse_proxy" {
     aws_subnet.public_b.id
   ]
 
-  enable_deletion_protection = false
+  enable_deletion_protection = true
+  drop_invalid_header_fields = true
+
+  access_logs {
+    bucket  = var.security_log_bucket_name
+    prefix  = "alb/access"
+    enabled = true
+  }
+
+  connection_logs {
+    bucket  = var.security_log_bucket_name
+    prefix  = "alb/connection"
+    enabled = true
+  }
 
   tags = {
     Name      = "${local.prefix}-alb"
     "lb:role" = "ahara"
   }
+
+  depends_on = [terraform_data.security_log_bucket_policy]
 }
 
 resource "aws_lb_target_group" "reverse_proxy" {

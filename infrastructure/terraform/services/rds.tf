@@ -43,7 +43,7 @@ resource "aws_db_instance" "ahara" {
 
   engine         = "postgres"
   engine_version = "16"
-  instance_class = "db.t4g.micro"
+  instance_class = "db.t4g.small"
 
   allocated_storage     = 20
   max_allocated_storage = 50
@@ -60,6 +60,7 @@ resource "aws_db_instance" "ahara" {
   multi_az            = false
   publicly_accessible = false
   deletion_protection = true
+  apply_immediately   = true
 
   skip_final_snapshot       = false
   final_snapshot_identifier = "${local.prefix}-shared-final"

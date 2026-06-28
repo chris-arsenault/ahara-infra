@@ -12,6 +12,8 @@ module "project_harbor" {
   prefix           = "harbor"
   state_key_prefix = "projects/harbor"
 
+  module_bundles = ["cognito-app"]
+
   policy_modules = [
     "terraform-state",
     "komodo-deploy",
@@ -19,6 +21,8 @@ module "project_harbor" {
   ]
 
   ssm_additional_parameter_paths = [
+    "ahara/cognito/*",
+    "ahara/auth-trigger/clients/*",
     "ahara/harbor/*",
   ]
 }

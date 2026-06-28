@@ -199,6 +199,12 @@ module "budgets-costexplorer" {
   account_id = var.account_id
 }
 
+module "security-audit" {
+  source     = "../policy-library/security-audit"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 # ── Policy Map ───────────────────────────────────────────���───
 
 locals {
@@ -233,5 +239,6 @@ locals {
     "wafv2"                   = module.wafv2.policy_json
     "komodo-deploy"           = module.komodo-deploy.policy_json
     "budgets-costexplorer"    = module.budgets-costexplorer.policy_json
+    "security-audit"          = module.security-audit.policy_json
   }
 }

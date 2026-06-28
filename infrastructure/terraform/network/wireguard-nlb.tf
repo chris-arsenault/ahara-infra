@@ -2,6 +2,7 @@ resource "aws_lb" "wireguard" {
   name                             = "${local.prefix}-wg-nlb"
   load_balancer_type               = "network"
   internal                         = false
+  enable_deletion_protection       = true
   enable_cross_zone_load_balancing = true
   subnets = [
     aws_subnet.public.id,

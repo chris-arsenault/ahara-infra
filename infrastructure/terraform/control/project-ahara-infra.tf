@@ -58,5 +58,6 @@ module "ahara_infra_project" {
     "cloudfront-distribution",
     "acm-dns",
     "secrets-manager",
+    "security-audit",
   ]
 }

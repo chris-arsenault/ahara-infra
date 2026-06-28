@@ -10,9 +10,9 @@
 module "cognito" {
   source = "./modules/cognito"
 
-  user_pool_name   = coalesce(var.cognito_user_pool_name, "${local.prefix}-users")
-  domain_name      = local.auth_domain
-  domain_zone_name = var.domain_name
+  user_pool_name = coalesce(var.cognito_user_pool_name, "${local.prefix}-users")
+  domain_name    = local.auth_domain
+  domain_zone_id = var.route53_zone_id
   clients = length(var.cognito_clients) > 0 ? var.cognito_clients : {
     svap    = "svap-app"
     canonry = "${local.prefix}-canonry-app"

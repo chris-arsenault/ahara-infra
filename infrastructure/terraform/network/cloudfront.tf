@@ -13,6 +13,12 @@ resource "aws_cloudfront_distribution" "reverse_proxy" {
 
   aliases = local.reverse_proxy_hostnames
 
+  logging_config {
+    bucket          = var.security_log_bucket_domain_name
+    include_cookies = false
+    prefix          = "cloudfront/reverse-proxy/"
+  }
+
   origin {
     domain_name = aws_lb.reverse_proxy.dns_name
     origin_id   = "alb-origin"
@@ -49,7 +55,10 @@ resource "aws_cloudfront_distribution" "reverse_proxy" {
     ssl_support_method       = "sni-only"
   }
 
-  depends_on = [aws_acm_certificate_validation.reverse_proxy]
+  depends_on = [
+    aws_acm_certificate_validation.reverse_proxy,
+    terraform_data.security_log_bucket_policy,
+  ]
 }
 
 resource "aws_route53_record" "reverse_proxy_alias_a" {
