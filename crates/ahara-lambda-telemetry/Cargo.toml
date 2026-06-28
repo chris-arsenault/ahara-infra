@@ -1,0 +1,25 @@
+[package]
+name = "ahara-lambda-telemetry"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "ahara_lambda_telemetry"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ahara-telemetry-adoption-check"
+path = "src/bin/ahara-telemetry-adoption-check.rs"
+
+[dependencies]
+bytes.workspace = true
+lambda_http.workspace = true
+lambda_runtime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio-stream.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true

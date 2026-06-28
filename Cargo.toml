@@ -1,0 +1,14 @@
+[workspace]
+members = ["crates/ahara-lambda-telemetry"]
+resolver = "2"
+
+[workspace.dependencies]
+bytes = "1"
+lambda_http = "0.14"
+lambda_runtime = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }

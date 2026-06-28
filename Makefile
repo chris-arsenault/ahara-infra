@@ -1,6 +1,17 @@
-.PHONY: ci lint fmt test test-integration terraform-fmt-check build deploy
+.PHONY: ci shared-crates-ci shared-crates-lint shared-crates-fmt shared-crates-test lint fmt test test-integration terraform-fmt-check build deploy
 
-ci: lint fmt test terraform-fmt-check
+ci: shared-crates-ci lint fmt test terraform-fmt-check
+
+shared-crates-ci: shared-crates-lint shared-crates-fmt shared-crates-test
+
+shared-crates-lint:
+	cargo clippy --workspace -- -D warnings
+
+shared-crates-fmt:
+	cargo fmt --check
+
+shared-crates-test:
+	cargo test --workspace
 
 lint:
 	cd backend && cargo clippy -- -D warnings
