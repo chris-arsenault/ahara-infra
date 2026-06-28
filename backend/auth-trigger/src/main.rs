@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::env;
 use std::sync::OnceLock;
 use tokio::sync::Mutex;
-use tracing::{error, info};
+use tracing::info;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,34 +68,15 @@ async fn get_client_map(ssm: &SsmClient) -> Result<HashMap<String, String>, Erro
     Ok(guard.as_ref().unwrap().clone())
 }
 
-async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Value, Error> {
-    let (payload, _ctx) = event.into_parts();
-
-    let cognito: CognitoEvent = serde_json::from_value(payload.clone())?;
-    let client_id = &cognito.caller_context.client_id;
-    let username = &cognito.user_name;
-
-    info!(username, client_id, "Pre-authentication check");
-
-    // Seeded admin user always passes
-    if username == "chris" {
-        let empty_client_map = HashMap::new();
-        if authorize_app_access(username, client_id, &empty_client_map, None)?.is_none() {
-            return Ok(payload);
-        }
-    }
-
-    let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-    let ssm = SsmClient::new(&aws_config);
-    let ddb = DdbClient::new(&aws_config);
-
-    let map = get_client_map(&ssm).await?;
-
+async fn load_user_apps(
+    ddb: &DdbClient,
+    username: &str,
+) -> Result<HashMap<String, AttributeValue>, Error> {
     let table_name = env::var("TABLE_NAME")?;
     let result = ddb
         .get_item()
         .table_name(&table_name)
-        .key("username", AttributeValue::S(username.clone()))
+        .key("username", AttributeValue::S(username.to_string()))
         .send()
         .await?;
 
@@ -105,17 +86,31 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Va
         .and_then(|v| v.as_m().ok())
         .ok_or("Access denied")?;
 
-    let app_key =
-        authorize_app_access(username, client_id, &map, Some(apps))?.ok_or("Access denied")?;
+    Ok(apps.clone())
+}
 
-    if !apps.contains_key(app_key) {
-        error!(
-            username,
-            app = app_key,
-            "Access denied — app not in user record"
-        );
-        return Err("Access denied".into());
+async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Value, Error> {
+    let (payload, _ctx) = event.into_parts();
+
+    let cognito: CognitoEvent = serde_json::from_value(payload.clone())?;
+    let client_id = &cognito.caller_context.client_id;
+    let username = &cognito.user_name;
+
+    info!(username, client_id, "Pre-authentication check");
+
+    if username == "chris" {
+        info!(username, "Seeded admin access granted");
+        return Ok(payload);
     }
+
+    let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    let ssm = SsmClient::new(&aws_config);
+    let ddb = DdbClient::new(&aws_config);
+
+    let map = get_client_map(&ssm).await?;
+    let apps = load_user_apps(&ddb, username).await?;
+    let app_key =
+        authorize_app_access(username, client_id, &map, Some(&apps))?.ok_or("Access denied")?;
 
     info!(username, app = app_key, "Access granted");
     Ok(payload)
