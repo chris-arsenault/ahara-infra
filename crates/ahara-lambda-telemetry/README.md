@@ -73,18 +73,26 @@ request ID, function metadata, and X-Ray trace ID when available.
 Use operation wrappers at service/repository/external-call boundaries:
 
 ```rust
-use ahara_lambda_telemetry::{Operation, TelemetryConfig};
+use ahara_lambda_telemetry::{Operation, OperationKind, TelemetryConfig};
 
 Operation::new(TelemetryConfig::new("linkdrop-processing"), "thumbnail.store")
     .with_domain("archive")
+    .with_kind(OperationKind::Background)
+    .with_detail("item.id", item_id.to_string())
+    .with_detail("object.size", thumbnail_len)
     .observe(async {
         store_thumbnail().await
     })
     .await?;
 ```
 
-This logs operation start and finish/error with duration. It is intentionally
-explicit so private user content is not accidentally logged.
+This logs operation start and finish/error with duration, `operation.type`, and
+an `operation.details` JSON object. `operation.type` is one of
+`user_interaction`, `polling`, `health`, `background`, or `system`, which lets
+dashboards separate update pollers and health checks from direct user work. The
+details object is intentionally explicit so private user content is not
+accidentally logged; include identifiers, sizes, status values, and booleans,
+not raw message bodies, note text, or full private URLs.
 
 ## Adoption Check
 

@@ -3,7 +3,7 @@ use std::sync::Once;
 
 use tracing_subscriber::fmt::format::FmtSpan;
 
-use crate::TelemetryConfig;
+use crate::{OperationDetails, OperationKind, TelemetryConfig};
 
 static INIT_LOGGING: Once = Once::new();
 
@@ -59,6 +59,7 @@ pub struct HttpRequestEvent<'a> {
     pub request_id: &'a str,
     pub method: &'a str,
     pub path: &'a str,
+    pub operation_kind: OperationKind,
     pub status_code: u16,
     pub duration_ms: u128,
 }
@@ -69,19 +70,22 @@ pub struct HttpRequestErrorEvent<'a> {
     pub request_id: &'a str,
     pub method: &'a str,
     pub path: &'a str,
+    pub operation_kind: OperationKind,
     pub duration_ms: u128,
     pub error: &'a dyn fmt::Debug,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct OperationEvent<'a> {
     pub config: &'a TelemetryConfig,
     pub name: &'a str,
     pub domain: &'a str,
+    pub kind: OperationKind,
+    pub details: &'a OperationDetails,
     pub duration_ms: Option<u128>,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct OperationErrorEvent<'a> {
     pub operation: OperationEvent<'a>,
     pub error: &'a dyn fmt::Debug,
@@ -173,6 +177,7 @@ impl TelemetryLogger for TracingTelemetryLogger {
             faas.invocation_id = %event.request_id,
             http.request.method = %event.method,
             url.path = %event.path,
+            operation.type = %event.operation_kind.as_str(),
             http.response.status_code = event.status_code,
             duration_ms = event.duration_ms,
             "http request finished"
@@ -191,6 +196,7 @@ impl TelemetryLogger for TracingTelemetryLogger {
             faas.invocation_id = %event.request_id,
             http.request.method = %event.method,
             url.path = %event.path,
+            operation.type = %event.operation_kind.as_str(),
             duration_ms = event.duration_ms,
             error.message = ?event.error,
             "http request failed"
@@ -201,6 +207,8 @@ impl TelemetryLogger for TracingTelemetryLogger {
         tracing::info!(
             event.name = %event.name,
             event.domain = %event.domain,
+            operation.type = %event.kind.as_str(),
+            operation.details = %operation_details_json(event.details),
             service.name = %event.config.service_name(),
             service.version = %event.config.service_version(),
             deployment.environment = %event.config.deployment_environment(),
@@ -214,6 +222,8 @@ impl TelemetryLogger for TracingTelemetryLogger {
         tracing::info!(
             event.name = %event.name,
             event.domain = %event.domain,
+            operation.type = %event.kind.as_str(),
+            operation.details = %operation_details_json(event.details),
             service.name = %event.config.service_name(),
             service.version = %event.config.service_version(),
             deployment.environment = %event.config.deployment_environment(),
@@ -228,6 +238,8 @@ impl TelemetryLogger for TracingTelemetryLogger {
         tracing::error!(
             event.name = %event.operation.name,
             event.domain = %event.operation.domain,
+            operation.type = %event.operation.kind.as_str(),
+            operation.details = %operation_details_json(event.operation.details),
             service.name = %event.operation.config.service_name(),
             service.version = %event.operation.config.service_version(),
             deployment.environment = %event.operation.config.deployment_environment(),
@@ -238,4 +250,8 @@ impl TelemetryLogger for TracingTelemetryLogger {
             "operation failed"
         );
     }
+}
+
+fn operation_details_json(details: &OperationDetails) -> String {
+    serde_json::Value::Object(details.clone()).to_string()
 }

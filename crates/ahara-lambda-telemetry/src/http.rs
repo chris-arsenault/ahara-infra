@@ -8,8 +8,8 @@ use lambda_http::tower::Service;
 use lambda_http::{Body, IntoResponse, Request, RequestExt, Response};
 
 use crate::{
-    init_lambda_logging, HttpRequestErrorEvent, HttpRequestEvent, TelemetryConfig, TelemetryLogger,
-    TracingTelemetryLogger,
+    init_lambda_logging, HttpRequestErrorEvent, HttpRequestEvent, OperationKind, TelemetryConfig,
+    TelemetryLogger, TracingTelemetryLogger,
 };
 
 #[derive(Clone, Debug)]
@@ -84,6 +84,7 @@ where
                         request_id: &request_context.request_id,
                         method: &request_context.method,
                         path: &request_context.path,
+                        operation_kind: request_context.operation_kind,
                         status_code: response.status().as_u16(),
                         duration_ms: started_at.elapsed().as_millis(),
                     });
@@ -95,6 +96,7 @@ where
                         request_id: &request_context.request_id,
                         method: &request_context.method,
                         path: &request_context.path,
+                        operation_kind: request_context.operation_kind,
                         duration_ms: started_at.elapsed().as_millis(),
                         error: &error,
                     });
@@ -110,6 +112,7 @@ struct RequestContext {
     request_id: String,
     method: String,
     path: String,
+    operation_kind: OperationKind,
 }
 
 impl RequestContext {
@@ -122,8 +125,19 @@ impl RequestContext {
             request_id,
             method: request.method().as_str().to_string(),
             path: request.uri().path().to_string(),
+            operation_kind: http_operation_kind(request.method().as_str(), request.uri().path()),
         }
     }
+}
+
+fn http_operation_kind(method: &str, path: &str) -> OperationKind {
+    if path == "/health" || path.ends_with("/health") {
+        return OperationKind::Health;
+    }
+    if method == "GET" && (path.ends_with("/updates") || path.contains("/poll")) {
+        return OperationKind::Polling;
+    }
+    OperationKind::UserInteraction
 }
 
 #[cfg(test)]
@@ -133,8 +147,9 @@ mod tests {
     use lambda_http::tower::{service_fn, ServiceExt};
     use lambda_http::{Body, Request, Response};
 
+    use super::http_operation_kind;
     use super::ObservedHttpService;
-    use crate::TelemetryConfig;
+    use crate::{OperationKind, TelemetryConfig};
 
     #[tokio::test]
     async fn observed_http_service_preserves_response_status() {
@@ -153,5 +168,18 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status().as_u16(), 201);
+    }
+
+    #[test]
+    fn http_operation_kind_classifies_health_and_polling() {
+        assert_eq!(http_operation_kind("GET", "/health"), OperationKind::Health);
+        assert_eq!(
+            http_operation_kind("GET", "/items/updates"),
+            OperationKind::Polling
+        );
+        assert_eq!(
+            http_operation_kind("POST", "/items"),
+            OperationKind::UserInteraction
+        );
     }
 }

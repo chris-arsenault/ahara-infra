@@ -13,11 +13,13 @@ pub use logger::{
     LambdaInvocationEvent, OperationErrorEvent, OperationEvent, TelemetryLogger,
     TracingTelemetryLogger,
 };
-pub use operation::{observe_operation, observe_operation_with_logger, Operation};
+pub use operation::{
+    observe_operation, observe_operation_with_logger, Operation, OperationDetails, OperationKind,
+};
 
 pub mod prelude {
     pub use crate::{
         init_lambda_logging, observe_operation, run_event_lambda, run_http_lambda, Operation,
-        TelemetryConfig,
+        OperationKind, TelemetryConfig,
     };
 }
