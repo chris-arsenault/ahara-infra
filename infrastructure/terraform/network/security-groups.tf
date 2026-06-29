@@ -79,6 +79,30 @@ resource "aws_security_group" "reverse_proxy" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  ingress {
+    description     = "OTLP gRPC from Ahara Lambdas"
+    from_port       = local.truenas_otlp_grpc_port
+    to_port         = local.truenas_otlp_grpc_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ahara_lambda.id]
+  }
+
+  ingress {
+    description     = "OTLP HTTP from Ahara Lambdas"
+    from_port       = local.truenas_otlp_http_port
+    to_port         = local.truenas_otlp_http_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ahara_lambda.id]
+  }
+
+  ingress {
+    description = "Loki push from EC2 Alloy agents"
+    from_port   = local.truenas_loki_port
+    to_port     = local.truenas_loki_port
+    protocol    = "tcp"
+    cidr_blocks = [local.public_subnet_cidr, local.private_subnet_cidr]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -228,6 +252,38 @@ resource "aws_security_group" "wireguard" {
     to_port     = 5432
     protocol    = "tcp"
     cidr_blocks = [local.private_subnet_cidr, local.private_subnet_cidr_b]
+  }
+
+  ingress {
+    description     = "Loki from reverse proxy Alloy gateway"
+    from_port       = local.truenas_loki_port
+    to_port         = local.truenas_loki_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.reverse_proxy.id]
+  }
+
+  ingress {
+    description     = "OTLP HTTP from reverse proxy Alloy gateway"
+    from_port       = local.truenas_otlp_http_port
+    to_port         = local.truenas_otlp_http_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.reverse_proxy.id]
+  }
+
+  ingress {
+    description     = "OTLP gRPC from reverse proxy Alloy gateway"
+    from_port       = local.truenas_otlp_grpc_port
+    to_port         = local.truenas_otlp_grpc_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.reverse_proxy.id]
+  }
+
+  ingress {
+    description     = "VictoriaMetrics from reverse proxy Alloy gateway"
+    from_port       = local.truenas_victoriametrics_port
+    to_port         = local.truenas_victoriametrics_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.reverse_proxy.id]
   }
 
   egress {

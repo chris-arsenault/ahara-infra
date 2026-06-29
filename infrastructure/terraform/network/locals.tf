@@ -30,7 +30,7 @@ locals {
   reverse_proxy_routes = {
     "dashboards.services.ahara.io" = {
       address = "192.168.66.3"
-      port    = 30037
+      port    = 30038
       auth    = "cognito"
     }
     "sonar.services.ahara.io" = {
@@ -40,6 +40,11 @@ locals {
       max_body_size = "5m"
     }
   }
+  truenas_observability_host      = "192.168.66.3"
+  truenas_loki_port               = 3100
+  truenas_otlp_grpc_port          = 4317
+  truenas_otlp_http_port          = 4318
+  truenas_victoriametrics_port    = 8428
   azs                             = slice(data.aws_availability_zones.available.names, 0, 2)
   az                              = local.azs[0]
   az_secondary                    = local.azs[1]
@@ -57,6 +62,4 @@ locals {
     SYSCTL_HARDENING_CONF  = local.hardening_sysctl_config
     AIDE_AMAZON_LINUX_CONF = local.hardening_aide_config
   })
-  vector_service_override = templatefile("${path.module}/templates/vector_service_override.conf.tpl", {})
-  vector_service_unit     = templatefile("${path.module}/templates/vector.service.tpl", {})
 }

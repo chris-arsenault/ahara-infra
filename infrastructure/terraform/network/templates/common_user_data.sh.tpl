@@ -12,38 +12,37 @@ chmod 700 /usr/local/bin/apply-system-hardening.sh
 
 systemctl disable --now amazon-cloudwatch-agent.service || true
 
-# Install Vector using official installer
-export HOME="$${HOME:-/root}"
-curl --proto '=https' --tlsv1.2 -sSfL https://sh.vector.dev | bash -s -- -y
-
-TOKEN="$(curl -sS -X PUT 'http://169.254.169.254/latest/api/token' -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')"
-INSTANCE_ID="$(curl -sS -H "X-aws-ec2-metadata-token: $${TOKEN}" http://169.254.169.254/latest/meta-data/instance-id)"
-AWS_REGION="$(curl -sS -H "X-aws-ec2-metadata-token: $${TOKEN}" http://169.254.169.254/latest/meta-data/placement/region)"
-
-mkdir -p /etc/vector
-mkdir -p /var/lib/vector
-
-cat >/etc/vector/environment <<EOF
-INSTANCE_ID=$${INSTANCE_ID}
-AWS_REGION=$${AWS_REGION}
+rpm --import https://rpm.grafana.com/gpg.key
+cat >/etc/yum.repos.d/grafana.repo <<'EOF'
+[grafana]
+name=grafana
+baseurl=https://rpm.grafana.com
+repo_gpgcheck=1
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.grafana.com/gpg.key
+sslverify=1
+sslcacert=/etc/pki/tls/certs/ca-bundle.crt
 EOF
 
-cat >/etc/vector/vector.toml <<'EOF'
-${VECTOR_CONFIG}
+dnf -y install alloy
+
+getent group adm >/dev/null && usermod -aG adm alloy || true
+getent group systemd-journal >/dev/null && usermod -aG systemd-journal alloy || true
+
+mkdir -p /etc/alloy
+mkdir -p /var/lib/alloy
+
+cat >/etc/alloy/config.alloy <<'EOF'
+${ALLOY_CONFIG}
 EOF
 
-cat >/etc/systemd/system/vector.service <<'EOF'
-${VECTOR_SERVICE_UNIT}
+cat >/etc/sysconfig/alloy <<'EOF'
+CONFIG_FILE=/etc/alloy/config.alloy
+CUSTOM_ARGS="--server.http.listen-addr=127.0.0.1:12345 --storage.path=/var/lib/alloy"
 EOF
-
-mkdir -p /etc/systemd/system/vector.service.d
-
-cat >/etc/systemd/system/vector.service.d/override.conf <<'EOF'
-${VECTOR_SERVICE_OVERRIDE}
-EOF
-
-systemctl daemon-reload
-
-systemctl enable --now vector
 
 ${EXTRA_SNIPPET}
+
+systemctl daemon-reload
+systemctl enable --now alloy
