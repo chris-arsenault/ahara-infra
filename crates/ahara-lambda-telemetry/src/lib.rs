@@ -3,7 +3,10 @@ mod config;
 mod event;
 mod http;
 mod logger;
+mod metrics;
 mod operation;
+mod otel;
+mod span_attrs;
 
 pub use config::TelemetryConfig;
 pub use event::{run_event_lambda, ObservedEventService};

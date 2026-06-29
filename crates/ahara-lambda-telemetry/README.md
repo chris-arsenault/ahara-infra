@@ -2,10 +2,34 @@
 
 Shared Rust Lambda telemetry for Ahara projects.
 
-The crate standardizes structured JSON logging on top of `tracing` and the
-Lambda Rust runtimes. It does not require an OTLP collector. Logs use
-OTEL-style field names so CloudWatch entries can be queried consistently today
-and exported later without changing call sites.
+The crate standardizes Rust Lambda telemetry on top of `tracing` and
+OpenTelemetry. It emits structured JSON logs for CloudWatch debugging and, when
+standard OTEL environment variables are configured, exports OTLP traces and
+metrics to an OpenTelemetry Collector or compatible vendor/backend.
+
+Ahara dashboards should be built in standard OTEL tooling such as Grafana,
+Tempo/Loki/Prometheus, Honeycomb, Datadog, New Relic, or AWS observability
+surfaces. Product UIs may link to or summarize that data, but this crate is the
+instrumentation contract.
+
+## OTLP Export
+
+OTLP export is disabled by default so a Lambda without a collector does not
+spend time failing requests to localhost. It turns on when either the standard
+exporter flag or an OTLP endpoint is present:
+
+```text
+OTEL_TRACES_EXPORTER=otlp
+OTEL_METRICS_EXPORTER=otlp
+OTEL_LOGS_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+```
+
+Signal-specific endpoint variables such as
+`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` and
+`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` and
+`OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` are also honored by the upstream OTLP
+exporters. Set `OTEL_SDK_DISABLED=true` to force OTEL export off.
 
 ## Supported Lambda Shapes
 
@@ -46,8 +70,9 @@ async fn handle_request(request: Request) -> Result<Response<Body>, Error> {
 }
 ```
 
-Every request logs method, sanitized path, response status, duration, service
-identity, deployment environment, and Lambda request ID.
+Every request emits a span, request count metric, request duration histogram,
+and JSON completion log with method, sanitized path, response status, outcome,
+service identity, deployment environment, and Lambda request ID.
 
 ## Event Lambda
 
@@ -65,8 +90,9 @@ async fn main() -> Result<(), Error> {
 }
 ```
 
-Every invocation logs start, finish/error, duration, service identity, Lambda
-request ID, function metadata, and X-Ray trace ID when available.
+Every invocation emits a span, invocation count metric, invocation duration
+histogram, and JSON logs with service identity, Lambda request ID, function
+metadata, and X-Ray trace ID when available.
 
 ## Operation Logging
 
@@ -86,8 +112,12 @@ Operation::new(TelemetryConfig::new("linkdrop-processing"), "thumbnail.store")
     .await?;
 ```
 
-This logs operation start and finish/error with duration, `operation.type`, and
-an `operation.details` JSON object. `operation.type` is one of
+This emits an operation span, operation count metric, operation duration
+histogram, and JSON start/finish/error logs with duration, `operation.type`, and
+an `operation.details` JSON object. Each operation detail is also flattened onto
+the OTEL span as a normal attribute so standard tools can filter and group by
+domain fields such as `item.kind`, `image.byte_size`, or `actor.label`.
+`operation.type` is one of
 `user_interaction`, `polling`, `health`, `background`, or `system`, which lets
 dashboards separate update pollers and health checks from direct user work. The
 details object is intentionally explicit so private user content is not

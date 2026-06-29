@@ -2,10 +2,14 @@ use std::fmt;
 use std::future::Future;
 use std::time::Instant;
 
+use opentelemetry::trace::Status;
 use serde_json::{Map, Value};
+use tracing::Instrument;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
-    OperationErrorEvent, OperationEvent, TelemetryConfig, TelemetryLogger, TracingTelemetryLogger,
+    span_attrs, OperationErrorEvent, OperationEvent, TelemetryConfig, TelemetryLogger,
+    TracingTelemetryLogger,
 };
 
 pub type OperationDetails = Map<String, Value>;
@@ -108,6 +112,7 @@ where
     E: fmt::Debug,
 {
     let started_at = Instant::now();
+    let span = operation_span(&operation);
     logger.operation_start(OperationEvent {
         config: &operation.config,
         name: operation.name,
@@ -117,8 +122,10 @@ where
         duration_ms: None,
     });
 
-    match future.await {
+    match future.instrument(span.clone()).await {
         Ok(value) => {
+            span.set_attribute("operation.outcome", "succeeded");
+            span.set_status(Status::Ok);
             logger.operation_finish(OperationEvent {
                 config: &operation.config,
                 name: operation.name,
@@ -130,6 +137,8 @@ where
             Ok(value)
         }
         Err(error) => {
+            span.set_attribute("operation.outcome", "failed");
+            span.set_status(Status::error(format!("{error:?}")));
             logger.operation_error(OperationErrorEvent {
                 operation: OperationEvent {
                     config: &operation.config,
@@ -144,6 +153,25 @@ where
             Err(error)
         }
     }
+}
+
+fn operation_span(operation: &Operation) -> tracing::Span {
+    let span = tracing::info_span!(
+        "ahara.operation",
+        event.domain = operation.domain,
+        operation.name = operation.name,
+        operation.type = operation.kind.as_str(),
+        operation.domain = operation.domain,
+        service.name = operation.config.service_name(),
+        service.version = operation.config.service_version(),
+        deployment.environment = operation.config.deployment_environment(),
+        deployment.environment.name = operation.config.deployment_environment(),
+        cloud.provider = "aws",
+        cloud.platform = "aws_lambda"
+    );
+    span.set_attribute("operation.outcome", "started");
+    span_attrs::set_operation_details(&span, &operation.details);
+    span
 }
 
 #[cfg(test)]

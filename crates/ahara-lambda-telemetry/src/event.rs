@@ -6,8 +6,11 @@ use std::time::Instant;
 
 use lambda_runtime::tower::Service;
 use lambda_runtime::{Diagnostic, IntoFunctionResponse, LambdaEvent};
+use opentelemetry::trace::Status;
 use serde::{Deserialize, Serialize};
 use tokio_stream::Stream;
+use tracing::Instrument;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
     init_lambda_logging, LambdaInvocationErrorEvent, LambdaInvocationEvent, TelemetryConfig,
@@ -85,7 +88,8 @@ where
 
     fn call(&mut self, event: LambdaEvent<A>) -> Self::Future {
         let event_context = EventContext::from_event::<A>(&event);
-        let future = self.inner.call(event);
+        let span = invocation_span(&event_context);
+        let future = self.inner.call(event).instrument(span.clone());
         let config = self.config.clone();
         let logger = self.logger.clone();
         Box::pin(async move {
@@ -103,6 +107,8 @@ where
 
             match future.await {
                 Ok(response) => {
+                    span.set_attribute("operation.outcome", "succeeded");
+                    span.set_status(Status::Ok);
                     logger.lambda_invocation_finish(LambdaInvocationEvent {
                         config: &config,
                         request_id: &event_context.request_id,
@@ -116,6 +122,8 @@ where
                     Ok(response)
                 }
                 Err(error) => {
+                    span.set_attribute("operation.outcome", "failed");
+                    span.set_status(Status::error(format!("{error:?}")));
                     logger.lambda_invocation_error(LambdaInvocationErrorEvent {
                         invocation: LambdaInvocationEvent {
                             config: &config,
@@ -134,6 +142,22 @@ where
             }
         })
     }
+}
+
+fn invocation_span(context: &EventContext) -> tracing::Span {
+    let span = tracing::info_span!(
+        "faas.invocation",
+        event.domain = "faas",
+        event.name = "faas.invocation",
+        faas.name = context.function_name.as_str(),
+        faas.version = context.function_version.as_str(),
+        faas.invocation_id = context.request_id.as_str(),
+        faas.invoked_arn = context.invoked_function_arn.as_str(),
+        faas.trigger = context.event_type,
+        trace.id = context.xray_trace_id.as_deref().unwrap_or("")
+    );
+    span.set_attribute("operation.outcome", "started");
+    span
 }
 
 #[derive(Debug)]
