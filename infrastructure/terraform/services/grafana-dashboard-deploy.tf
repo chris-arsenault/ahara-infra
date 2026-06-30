@@ -16,6 +16,11 @@ data "archive_file" "grafana_dashboard_deploy" {
   output_path = "${path.module}/grafana-dashboard-deploy-lambda.zip"
 }
 
+resource "aws_cloudwatch_log_group" "grafana_dashboard_deploy" {
+  name              = "/aws/lambda/${local.prefix}-grafana-dashboard-deploy"
+  retention_in_days = 14
+}
+
 resource "aws_iam_role" "grafana_dashboard_deploy" {
   name               = "${local.prefix}-grafana-dashboard-deploy"
   assume_role_policy = data.aws_iam_policy_document.auth_trigger_assume.json
@@ -63,6 +68,8 @@ resource "aws_lambda_function" "grafana_dashboard_deploy" {
       GRAFANA_URL                     = "https://dashboards.services.ahara.io"
     }
   }
+
+  depends_on = [aws_cloudwatch_log_group.grafana_dashboard_deploy]
 }
 
 resource "aws_ssm_parameter" "grafana_dashboard_deploy_function" {

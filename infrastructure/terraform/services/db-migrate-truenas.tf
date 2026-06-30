@@ -47,6 +47,11 @@ data "archive_file" "db_migrate_truenas" {
   output_path = "${path.module}/db-migrate-truenas-lambda.zip"
 }
 
+resource "aws_cloudwatch_log_group" "db_migrate_truenas" {
+  name              = "/aws/lambda/${local.prefix}-db-migrate-truenas"
+  retention_in_days = 14
+}
+
 resource "aws_iam_role" "db_migrate_truenas" {
   name               = "${local.prefix}-db-migrate-truenas"
   assume_role_policy = data.aws_iam_policy_document.auth_trigger_assume.json
@@ -106,6 +111,8 @@ resource "aws_lambda_function" "db_migrate_truenas" {
       DB_STACK_MAP = jsonencode({ for k, v in var.truenas_db_stacks : k => v })
     }
   }
+
+  depends_on = [aws_cloudwatch_log_group.db_migrate_truenas]
 }
 
 # SSM outputs
