@@ -107,7 +107,10 @@ resource "aws_iam_role_policy" "truenas_roles_anywhere_entry" {
       {
         Sid    = "AssumeMatchingTrueNasWorkloadRoles"
         Effect = "Allow"
-        Action = "sts:AssumeRole"
+        Action = [
+          "sts:AssumeRole",
+          "sts:SetSourceIdentity",
+        ]
         Resource = [
           "arn:${data.aws_partition.current.partition}:iam::${local.account_id}:role/*-truenas-*",
           "arn:${data.aws_partition.current.partition}:iam::${local.account_id}:role/*/truenas/*-truenas-*"

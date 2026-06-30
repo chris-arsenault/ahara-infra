@@ -24,7 +24,10 @@ data "aws_iam_policy_document" "assume" {
       type        = "AWS"
       identifiers = [data.aws_ssm_parameter.entry_role_arn.value]
     }
-    actions = ["sts:AssumeRole"]
+    actions = [
+      "sts:AssumeRole",
+      "sts:SetSourceIdentity",
+    ]
 
     condition {
       test     = "StringEquals"
