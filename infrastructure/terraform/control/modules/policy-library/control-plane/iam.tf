@@ -84,6 +84,7 @@ data "aws_iam_policy_document" "this" {
     effect = "Allow"
     actions = [
       "iam:CreatePolicy",
+      "iam:CreatePolicyVersion",
       "iam:GetPolicy",
       "iam:GetPolicyVersion",
       "iam:TagPolicy",
