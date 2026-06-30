@@ -130,6 +130,7 @@ data "aws_iam_policy_document" "this" {
       "acm-pca:DescribeCertificateAuthority",
       "acm-pca:GetCertificateAuthorityCertificate",
       "acm-pca:GetCertificateAuthorityCsr",
+      "acm-pca:ImportCertificateAuthorityCertificate",
       "acm-pca:IssueCertificate",
       "acm-pca:GetCertificate",
       "acm-pca:ListCertificateAuthorities",
