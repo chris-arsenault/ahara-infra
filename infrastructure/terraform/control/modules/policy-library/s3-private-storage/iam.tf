@@ -18,12 +18,8 @@ data "aws_iam_policy_document" "this" {
     effect = "Allow"
     actions = [
       "s3:DeleteBucket",
-      "s3:DeleteBucketOwnershipControls",
-      "s3:DeleteBucketPolicy",
       "s3:GetBucketLocation",
       "s3:GetBucketNotification",
-      "s3:GetBucketOwnershipControls",
-      "s3:GetBucketPolicy",
       "s3:GetBucketPublicAccessBlock",
       "s3:GetBucketCORS",
       "s3:GetBucketTagging",
@@ -35,8 +31,6 @@ data "aws_iam_policy_document" "this" {
       "s3:ListBucketVersions",
       "s3:PutBucketCORS",
       "s3:PutBucketNotification",
-      "s3:PutBucketOwnershipControls",
-      "s3:PutBucketPolicy",
       "s3:PutBucketPublicAccessBlock",
       "s3:PutBucketTagging",
       "s3:PutBucketVersioning",
