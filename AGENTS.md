@@ -45,6 +45,7 @@ No circular dependencies. Cross-layer references use direct module outputs
 - `/ahara/db/<project>/*` — per-project app creds (published by db-migrate Lambda)
 - `/ahara/auth-trigger/clients/*` — client ID → project key map (written by consumers)
 - `/ahara/sonarqube/*`, `/ahara/truenas/*`, `/ahara/komodo/*` — operational params
+- `/ahara/truenas-roles-anywhere/*` — TrueNAS IAM Roles Anywhere discovery, workload registrations, and short-lived enrollment tokens
 - `/ahara/og-server/*` — OG Lambda artifact location
 
 **Route53** — `ahara.io.` zone looked up by name (not SSM).

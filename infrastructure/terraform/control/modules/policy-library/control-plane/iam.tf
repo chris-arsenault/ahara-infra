@@ -93,4 +93,50 @@ data "aws_iam_policy_document" "this" {
     ]
     resources = [local.permissions_boundary_arn]
   }
+
+  statement {
+    sid    = "ManageRolesAnywhere"
+    effect = "Allow"
+    actions = [
+      "rolesanywhere:CreateProfile",
+      "rolesanywhere:UpdateProfile",
+      "rolesanywhere:DeleteProfile",
+      "rolesanywhere:GetProfile",
+      "rolesanywhere:ListProfiles",
+      "rolesanywhere:EnableProfile",
+      "rolesanywhere:DisableProfile",
+      "rolesanywhere:CreateTrustAnchor",
+      "rolesanywhere:UpdateTrustAnchor",
+      "rolesanywhere:DeleteTrustAnchor",
+      "rolesanywhere:GetTrustAnchor",
+      "rolesanywhere:ListTrustAnchors",
+      "rolesanywhere:EnableTrustAnchor",
+      "rolesanywhere:DisableTrustAnchor",
+      "rolesanywhere:TagResource",
+      "rolesanywhere:UntagResource",
+      "rolesanywhere:ListTagsForResource",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "ManagePrivateCA"
+    effect = "Allow"
+    actions = [
+      "acm-pca:CreateCertificateAuthority",
+      "acm-pca:DeleteCertificateAuthority",
+      "acm-pca:RestoreCertificateAuthority",
+      "acm-pca:UpdateCertificateAuthority",
+      "acm-pca:DescribeCertificateAuthority",
+      "acm-pca:GetCertificateAuthorityCertificate",
+      "acm-pca:GetCertificateAuthorityCsr",
+      "acm-pca:IssueCertificate",
+      "acm-pca:GetCertificate",
+      "acm-pca:ListCertificateAuthorities",
+      "acm-pca:ListTags",
+      "acm-pca:TagCertificateAuthority",
+      "acm-pca:UntagCertificateAuthority",
+    ]
+    resources = ["*"]
+  }
 }
