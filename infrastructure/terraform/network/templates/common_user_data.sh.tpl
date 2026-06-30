@@ -81,15 +81,15 @@ install_vector_cloudwatch() {
   curl --proto '=https' --tlsv1.2 -sSfL https://sh.vector.dev | bash -s -- -y
 
   TOKEN="$(curl -sS -X PUT 'http://169.254.169.254/latest/api/token' -H 'X-aws-ec2-metadata-token-ttl-seconds: 21600')"
-  INSTANCE_ID="$(curl -sS -H "X-aws-ec2-metadata-token: $${TOKEN}" http://169.254.169.254/latest/meta-data/instance-id)"
-  AWS_REGION="$(curl -sS -H "X-aws-ec2-metadata-token: $${TOKEN}" http://169.254.169.254/latest/meta-data/placement/region)"
+  METADATA_INSTANCE_ID="$(curl -sS -H "X-aws-ec2-metadata-token: $${TOKEN}" http://169.254.169.254/latest/meta-data/instance-id)"
+  METADATA_AWS_REGION="$(curl -sS -H "X-aws-ec2-metadata-token: $${TOKEN}" http://169.254.169.254/latest/meta-data/placement/region)"
 
   mkdir -p /etc/vector
   mkdir -p /var/lib/vector
 
   cat >/etc/vector/environment <<EOF
-INSTANCE_ID=$${INSTANCE_ID}
-AWS_REGION=$${AWS_REGION}
+INSTANCE_ID=$${METADATA_INSTANCE_ID}
+AWS_REGION=$${METADATA_AWS_REGION}
 EOF
 
   cat >/etc/vector/vector.toml <<'EOF'
