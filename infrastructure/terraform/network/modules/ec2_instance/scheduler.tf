@@ -32,6 +32,7 @@ resource "aws_iam_role_policy" "scheduler" {
 resource "aws_scheduler_schedule" "nightly_refresh" {
   name        = substr(local.schedule_name, 0, 52)
   description = "Nightly instance refresh for ${var.name}"
+  state       = var.refresh_schedule_state
 
   schedule_expression = var.refresh_cron_expression
 

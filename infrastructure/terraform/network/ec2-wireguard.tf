@@ -46,10 +46,11 @@ resource "aws_iam_role_policy" "inline_modules" {
 module "wireguard" {
   source = "./modules/ec2_instance"
 
-  name                 = "${local.prefix}-wireguard-server"
-  iam_instance_profile = aws_iam_instance_profile.wireguard.name
-  subnet_id            = aws_subnet.private.id
-  security_group_ids   = [aws_security_group.wireguard.id]
+  name                   = "${local.prefix}-wireguard-server"
+  iam_instance_profile   = aws_iam_instance_profile.wireguard.name
+  subnet_id              = aws_subnet.private.id
+  security_group_ids     = [aws_security_group.wireguard.id]
+  refresh_schedule_state = "DISABLED"
 
   user_data = templatefile("${path.module}/templates/common_user_data.sh.tpl", {
     EXTRA_SNIPPET = templatefile("${path.module}/templates/wireguard_user_data.sh.tpl", {
@@ -66,7 +67,50 @@ module "wireguard" {
       WG_SERVER_IP        = cidrhost(local.wireguard_cidr, 1)
       VPC_DNS             = cidrhost(local.vpc_cidr, 2)
     })
-    HARDENING_SCRIPT = local.hardening_script
+    HARDENING_SCRIPT        = local.hardening_script
+    VECTOR_SERVICE_UNIT     = local.vector_service_unit
+    VECTOR_SERVICE_OVERRIDE = local.vector_service_override
+    VECTOR_CONFIG = templatefile("${path.module}/templates/vector_config.toml.tpl", {
+      file_logs = [
+        {
+          file_path       = "/var/log/cloud-init-output.log"
+          log_group_name  = aws_cloudwatch_log_group.wireguard.name
+          log_stream_name = "{instance_id}/cloud-init-output"
+        }
+      ]
+      journal_logs = [
+        {
+          match_field     = "SYSTEMD_UNIT"
+          match_value     = "wg-quick@wg0.service"
+          log_group_name  = aws_cloudwatch_log_group.wireguard.name
+          log_stream_name = "{instance_id}/wg-quick"
+        },
+        {
+          match_field     = "SYSTEMD_UNIT"
+          match_value     = "wg-healthcheck.service"
+          log_group_name  = aws_cloudwatch_log_group.wireguard.name
+          log_stream_name = "{instance_id}/wg-healthcheck"
+        },
+        {
+          match_field     = "SYSLOG_IDENTIFIER"
+          match_value     = "kernel"
+          log_group_name  = aws_cloudwatch_log_group.wireguard.name
+          log_stream_name = "{instance_id}/kernel"
+        },
+        {
+          match_field     = "SYSLOG_IDENTIFIER"
+          match_value     = "sshd"
+          log_group_name  = aws_cloudwatch_log_group.wireguard.name
+          log_stream_name = "{instance_id}/journal-sshd"
+        },
+        {
+          match_field     = "SYSLOG_IDENTIFIER"
+          match_value     = "auditd"
+          log_group_name  = aws_cloudwatch_log_group.wireguard.name
+          log_stream_name = "{instance_id}/journal-audit"
+        }
+      ]
+    })
     ALLOY_CONFIG = templatefile("${path.module}/templates/alloy_config.alloy.tpl", {
       host_role                    = "wireguard"
       loki_push_url                = "http://${module.reverse_proxy.private_ip}:${local.truenas_loki_port}/loki/api/v1/push"
@@ -78,7 +122,12 @@ module "wireguard" {
       truenas_otlp_http_port       = local.truenas_otlp_http_port
       truenas_victoriametrics_port = local.truenas_victoriametrics_port
       otlp_gateway_enabled         = false
-      file_logs                    = []
+      file_logs = [
+        {
+          file_path = "/var/log/cloud-init-output.log"
+          source    = "cloud-init-output"
+        }
+      ]
       journal_logs = [
         {
           match_expr = "_SYSTEMD_UNIT=wg-quick@wg0.service"

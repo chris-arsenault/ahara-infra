@@ -9,7 +9,38 @@ readonly SSM_PUBLIC_KEY_PATH="${SSM_PUBLIC_KEY_PATH}"
 readonly AWS_REGION="${AWS_REGION}"
 readonly SECRET_ID="${SECRET_ID}"
 
-dnf -y install wireguard-tools iproute iptables-services jq awscli socat
+CONNECTIVITY_TARGET="https://cdn.amazonlinux.com"
+CONNECTIVITY_READY=0
+MAX_ATTEMPTS=60
+
+for attempt in $(seq 1 $MAX_ATTEMPTS); do
+  if curl --proto '=https' --tlsv1.2 --silent --location --head --connect-timeout 5 "$CONNECTIVITY_TARGET" >/dev/null; then
+    CONNECTIVITY_READY=1
+    echo "outbound connectivity available after $attempt attempt(s)" >&2
+    break
+  fi
+  echo "waiting for outbound connectivity (attempt $attempt/$MAX_ATTEMPTS)" >&2
+  sleep 10
+done
+
+if [ "$CONNECTIVITY_READY" -ne 1 ]; then
+  echo "failed to detect outbound connectivity after $MAX_ATTEMPTS attempts; package installs may fail" >&2
+fi
+
+WIREGUARD_PACKAGES_INSTALLED=0
+for attempt in $(seq 1 10); do
+  if dnf -y install wireguard-tools iproute iptables-services jq awscli socat; then
+    WIREGUARD_PACKAGES_INSTALLED=1
+    break
+  fi
+  echo "dnf install wireguard packages failed (attempt $attempt/10); retrying in 15s" >&2
+  sleep 15
+done
+
+if [ "$WIREGUARD_PACKAGES_INSTALLED" -ne 1 ]; then
+  echo "failed to install WireGuard packages; WireGuard cannot be configured" >&2
+  exit 1
+fi
 
 echo 'net.ipv4.ip_forward=1' >/etc/sysctl.d/99-wg.conf
 sysctl --system

@@ -41,3 +41,14 @@ variable "refresh_cron_expression" {
   type        = string
   default     = "cron(0 8 * * ? *)"
 }
+
+variable "refresh_schedule_state" {
+  description = "Whether the EventBridge Scheduler refresh should run automatically."
+  type        = string
+  default     = "ENABLED"
+
+  validation {
+    condition     = contains(["ENABLED", "DISABLED"], var.refresh_schedule_state)
+    error_message = "refresh_schedule_state must be ENABLED or DISABLED."
+  }
+}

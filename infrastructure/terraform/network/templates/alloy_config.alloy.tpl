@@ -43,7 +43,7 @@ loki.source.file "file_${idx}" {
     },
   ]
   forward_to    = [loki.write.default.receiver]
-  tail_from_end = true
+  tail_from_end = false
 
   file_match {
     enabled     = true

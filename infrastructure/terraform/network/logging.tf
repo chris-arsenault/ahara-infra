@@ -1,3 +1,18 @@
+resource "aws_cloudwatch_log_group" "reverse_proxy" {
+  name              = "/aws/${local.prefix}/reverse-proxy"
+  retention_in_days = 30
+}
+
+resource "aws_cloudwatch_log_group" "wireguard" {
+  name              = "/aws/${local.prefix}/wireguard"
+  retention_in_days = 30
+}
+
+resource "aws_cloudwatch_log_group" "nat" {
+  name              = "/aws/${local.prefix}/nat"
+  retention_in_days = 30
+}
+
 resource "aws_flow_log" "vpc" {
   log_destination      = "${var.security_log_bucket_arn}/vpc-flow-logs"
   log_destination_type = "s3"

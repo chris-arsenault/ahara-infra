@@ -16,18 +16,50 @@ resource "aws_iam_role_policy_attachment" "nat_ssm" {
 module "nat" {
   source = "./modules/ec2_instance"
 
-  name                 = "${local.prefix}-nat"
-  iam_instance_profile = aws_iam_instance_profile.nat.name
-  subnet_id            = aws_subnet.public.id
-  security_group_ids   = [aws_security_group.nat.id]
-  associate_eip        = true
-  instance_type        = "t3.nano"
+  name                   = "${local.prefix}-nat"
+  iam_instance_profile   = aws_iam_instance_profile.nat.name
+  subnet_id              = aws_subnet.public.id
+  security_group_ids     = [aws_security_group.nat.id]
+  associate_eip          = true
+  instance_type          = "t3.nano"
+  refresh_schedule_state = "DISABLED"
 
   user_data = templatefile("${path.module}/templates/common_user_data.sh.tpl", {
     EXTRA_SNIPPET = templatefile("${path.module}/templates/nat_instance_user_data.sh.tpl", {
       PRIVATE_SUBNET_CIDR = local.private_subnet_cidr
     })
-    HARDENING_SCRIPT = local.hardening_script
+    HARDENING_SCRIPT        = local.hardening_script
+    VECTOR_SERVICE_UNIT     = local.vector_service_unit
+    VECTOR_SERVICE_OVERRIDE = local.vector_service_override
+    VECTOR_CONFIG = templatefile("${path.module}/templates/vector_config.toml.tpl", {
+      file_logs = [
+        {
+          file_path       = "/var/log/cloud-init-output.log"
+          log_group_name  = aws_cloudwatch_log_group.nat.name
+          log_stream_name = "{instance_id}/cloud-init-output"
+        }
+      ]
+      journal_logs = [
+        {
+          match_field     = "SYSLOG_IDENTIFIER"
+          match_value     = "kernel"
+          log_group_name  = aws_cloudwatch_log_group.nat.name
+          log_stream_name = "{instance_id}/kernel"
+        },
+        {
+          match_field     = "SYSLOG_IDENTIFIER"
+          match_value     = "sshd"
+          log_group_name  = aws_cloudwatch_log_group.nat.name
+          log_stream_name = "{instance_id}/journal-sshd"
+        },
+        {
+          match_field     = "SYSLOG_IDENTIFIER"
+          match_value     = "auditd"
+          log_group_name  = aws_cloudwatch_log_group.nat.name
+          log_stream_name = "{instance_id}/journal-audit"
+        }
+      ]
+    })
     ALLOY_CONFIG = templatefile("${path.module}/templates/alloy_config.alloy.tpl", {
       host_role                    = "nat"
       loki_push_url                = "http://${module.reverse_proxy.private_ip}:${local.truenas_loki_port}/loki/api/v1/push"
@@ -39,7 +71,12 @@ module "nat" {
       truenas_otlp_http_port       = local.truenas_otlp_http_port
       truenas_victoriametrics_port = local.truenas_victoriametrics_port
       otlp_gateway_enabled         = false
-      file_logs                    = []
+      file_logs = [
+        {
+          file_path = "/var/log/cloud-init-output.log"
+          source    = "cloud-init-output"
+        }
+      ]
       journal_logs = [
         {
           match_expr = "SYSLOG_IDENTIFIER=kernel"
