@@ -1,5 +1,44 @@
 data "aws_iam_policy_document" "truenas_workload_boundary" {
   statement {
+    sid    = "DenyIdentityAdministration"
+    effect = "Deny"
+    actions = [
+      "account:*",
+      "iam:*",
+      "identitystore:*",
+      "organizations:*",
+      "sso:*",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "DenyCognitoUserAdministration"
+    effect = "Deny"
+    actions = [
+      "cognito-idp:Admin*",
+      "cognito-idp:CreateGroup",
+      "cognito-idp:CreateUserPool*",
+      "cognito-idp:DeleteGroup",
+      "cognito-idp:DeleteUserPool*",
+      "cognito-idp:UpdateGroup",
+      "cognito-idp:UpdateUserPool*",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
+    sid    = "DenyMarketplace"
+    effect = "Deny"
+    actions = [
+      "aws-marketplace:*",
+      "aws-marketplace-management:*",
+      "marketplacecommerceanalytics:*",
+    ]
+    resources = ["*"]
+  }
+
+  statement {
     sid    = "S3ProjectStorage"
     effect = "Allow"
     actions = [
