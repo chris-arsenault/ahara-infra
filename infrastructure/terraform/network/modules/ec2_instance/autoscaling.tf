@@ -18,11 +18,15 @@ resource "aws_autoscaling_group" "this" {
     propagate_at_launch = true
   }
 
-  instance_refresh {
-    strategy = "Rolling"
+  dynamic "instance_refresh" {
+    for_each = var.enable_instance_refresh ? [1] : []
 
-    preferences {
-      min_healthy_percentage = 0
+    content {
+      strategy = "Rolling"
+
+      preferences {
+        min_healthy_percentage = 0
+      }
     }
   }
 

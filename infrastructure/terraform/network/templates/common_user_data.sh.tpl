@@ -23,6 +23,24 @@ EOF
   /usr/local/bin/apply-system-hardening.sh
 }
 
+ensure_bootstrap_swap() {
+  if swapon --show=NAME --noheadings | grep -qx '/swapfile'; then
+    return 0
+  fi
+
+  if [ ! -f /swapfile ]; then
+    fallocate -l 1G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=1024
+    chmod 600 /swapfile
+    mkswap /swapfile
+  fi
+
+  swapon /swapfile
+
+  if ! grep -q '^/swapfile ' /etc/fstab; then
+    echo '/swapfile none swap sw 0 0' >>/etc/fstab
+  fi
+}
+
 install_alloy() {
   rpm --import https://rpm.grafana.com/gpg.key
   cat >/etc/yum.repos.d/grafana.repo <<'EOF'
@@ -96,6 +114,7 @@ EOF
 # telemetry setup. NAT and WireGuard are single-instance network dependencies.
 ${EXTRA_SNIPPET}
 
+run_optional "bootstrap swap" ensure_bootstrap_swap
 run_optional "dnf security refresh" dnf -y upgrade --refresh
 run_optional "system hardening" apply_hardening
 run_optional "alloy telemetry" install_alloy

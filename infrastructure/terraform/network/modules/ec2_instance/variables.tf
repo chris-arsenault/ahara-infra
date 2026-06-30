@@ -52,3 +52,9 @@ variable "refresh_schedule_state" {
     error_message = "refresh_schedule_state must be ENABLED or DISABLED."
   }
 }
+
+variable "enable_instance_refresh" {
+  description = "Whether Terraform-managed launch template changes should start an instance refresh."
+  type        = bool
+  default     = true
+}
