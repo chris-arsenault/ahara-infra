@@ -109,6 +109,7 @@ resource "aws_iam_role_policy" "truenas_roles_anywhere_entry" {
         Effect = "Allow"
         Action = [
           "sts:AssumeRole",
+          "sts:TagSession",
           "sts:SetSourceIdentity",
         ]
         Resource = [

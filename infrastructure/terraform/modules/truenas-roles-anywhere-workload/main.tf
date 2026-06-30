@@ -26,6 +26,7 @@ data "aws_iam_policy_document" "assume" {
     }
     actions = [
       "sts:AssumeRole",
+      "sts:TagSession",
       "sts:SetSourceIdentity",
     ]
 
