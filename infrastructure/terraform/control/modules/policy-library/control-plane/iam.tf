@@ -120,6 +120,19 @@ data "aws_iam_policy_document" "this" {
   }
 
   statement {
+    sid       = "CreateRolesAnywhereServiceLinkedRole"
+    effect    = "Allow"
+    actions   = ["iam:CreateServiceLinkedRole"]
+    resources = ["arn:aws:iam::${var.account_id}:role/aws-service-role/*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:AWSServiceName"
+      values   = ["rolesanywhere.amazonaws.com"]
+    }
+  }
+
+  statement {
     sid    = "ManagePrivateCA"
     effect = "Allow"
     actions = [
