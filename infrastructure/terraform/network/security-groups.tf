@@ -255,6 +255,14 @@ resource "aws_security_group" "wireguard" {
   }
 
   ingress {
+    description = "Grafana API from private subnets (middlebox routing requires CIDR, not SG ref)"
+    from_port   = local.reverse_proxy_routes["dashboards.services.ahara.io"].port
+    to_port     = local.reverse_proxy_routes["dashboards.services.ahara.io"].port
+    protocol    = "tcp"
+    cidr_blocks = [local.private_subnet_cidr, local.private_subnet_cidr_b]
+  }
+
+  ingress {
     description     = "Loki from reverse proxy Alloy gateway"
     from_port       = local.truenas_loki_port
     to_port         = local.truenas_loki_port
