@@ -117,6 +117,25 @@ prometheus.remote_write "victoriametrics" {
   }
 }
 
+// Self-observability: scrape this gateway collector's own /metrics endpoint
+// (otelcol_* receiver/exporter/queue metrics) and ship them to TrueNAS
+// VictoriaMetrics, so the edge gateway collector appears alongside the local
+// TrueNAS Alloy router on the Grafana "Pipeline Health" dashboard. The
+// instance label distinguishes the two collectors. The listen address mirrors
+// CUSTOM_ARGS (--server.http.listen-addr) set in the host user-data.
+prometheus.scrape "alloy_self" {
+  targets = [
+    {
+      __address__ = "127.0.0.1:12345",
+      job         = "alloy",
+      instance    = "reverse-proxy-gateway",
+      host_role   = "${host_role}",
+    },
+  ]
+  forward_to      = [prometheus.remote_write.victoriametrics.receiver]
+  scrape_interval = "30s"
+}
+
 otelcol.exporter.loki "truenas" {
   forward_to = [loki.write.default.receiver]
 }
