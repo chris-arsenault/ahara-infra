@@ -1,5 +1,5 @@
 [workspace]
-members = ["auth-trigger", "ci-ingest", "cors-handler", "db-migrate", "db-migrate-truenas", "grafana-dashboard-deploy", "komodo-proxy", "og-server", "ops-dashboard", "truenas-roles-anywhere-enroll"]
+members = ["auth-trigger", "ci-ingest", "cors-handler", "db-migrate", "db-migrate-truenas", "grafana-dashboard-bootstrap", "grafana-dashboard-deploy", "komodo-proxy", "og-server", "ops-dashboard", "truenas-roles-anywhere-enroll"]
 resolver = "2"
 
 [workspace.dependencies]

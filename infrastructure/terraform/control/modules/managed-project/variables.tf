@@ -25,7 +25,7 @@ variable "allow_pull_request" {
 }
 
 variable "policy_modules" {
-  description = "Individual policy primitives to attach to the deployer role (for things outside the ahara-tf-patterns shared modules): terraform-state, db-migrate, dynamodb, bedrock-inference, sns, ses, s3-private-storage, cloudwatch-alarms, secrets-manager, komodo-deploy, grafana-dashboard-deploy, ec2-vpc-compute, ec2-security-groups, rds, cognito-pool, control-plane, ssm-write, budgets-costexplorer, security-audit."
+  description = "Individual policy primitives to attach to the deployer role (for things outside the ahara-tf-patterns shared modules): terraform-state, db-migrate, dynamodb, bedrock-inference, sns, ses, s3-private-storage, cloudwatch-alarms, secrets-manager, komodo-deploy, grafana-dashboard-bootstrap, grafana-dashboard-deploy, ec2-vpc-compute, ec2-security-groups, rds, cognito-pool, control-plane, ssm-write, budgets-costexplorer, security-audit."
   type        = set(string)
   default     = []
 }

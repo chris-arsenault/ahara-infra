@@ -10,6 +10,16 @@ locals {
   grafana_dashboard_deploy_token_parameter = "${local.ssm_prefix}/observability/grafana-dashboard-deployer-token"
 }
 
+resource "aws_ssm_parameter" "grafana_dashboard_deploy_token" {
+  name  = local.grafana_dashboard_deploy_token_parameter
+  type  = "SecureString"
+  value = "PLACEHOLDER"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+}
+
 data "archive_file" "grafana_dashboard_deploy" {
   type        = "zip"
   source_file = "${path.module}/../../../backend/target/lambda/grafana-dashboard-deploy/bootstrap"

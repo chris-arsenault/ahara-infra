@@ -16,6 +16,6 @@ module "project_ahara_observability" {
 
   policy_modules = [
     "komodo-deploy",
+    "grafana-dashboard-bootstrap",
   ]
 }
-
