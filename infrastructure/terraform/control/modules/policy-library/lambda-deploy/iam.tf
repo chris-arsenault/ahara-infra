@@ -7,6 +7,8 @@ data "aws_iam_policy_document" "this" {
       "lambda:UpdateFunctionCode",
       "lambda:UpdateFunctionConfiguration",
       "lambda:DeleteFunction",
+      "lambda:PutFunctionConcurrency",
+      "lambda:DeleteFunctionConcurrency",
       "lambda:Get*",
       "lambda:PublishVersion",
       "lambda:CreateAlias",
