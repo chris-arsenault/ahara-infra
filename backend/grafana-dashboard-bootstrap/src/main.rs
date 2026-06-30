@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use aws_config::BehaviorVersion;
 use aws_sdk_ssm::Client as SsmClient;
@@ -13,7 +14,9 @@ async fn main() -> Result<(), Error> {
     let aws_config = aws_config::load_defaults(BehaviorVersion::latest()).await;
     let state = Arc::new(AppState::new(
         SsmClient::new(&aws_config),
-        HttpClient::new(),
+        HttpClient::builder()
+            .timeout(Duration::from_secs(5))
+            .build()?,
         BootstrapConfig::from_env(),
     ));
 

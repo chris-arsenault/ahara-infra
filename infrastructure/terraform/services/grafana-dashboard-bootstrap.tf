@@ -68,7 +68,7 @@ resource "aws_lambda_function" "grafana_dashboard_bootstrap" {
   filename         = data.archive_file.grafana_dashboard_bootstrap.output_path
   source_code_hash = data.archive_file.grafana_dashboard_bootstrap.output_base64sha256
 
-  timeout     = 660
+  timeout     = 90
   memory_size = 128
 
   vpc_config {

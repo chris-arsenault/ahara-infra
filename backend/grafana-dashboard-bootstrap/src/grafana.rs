@@ -3,7 +3,7 @@ use reqwest::{Client, Method, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::time::{sleep, Duration};
-use tracing::info;
+use tracing::{info, warn};
 
 #[derive(Clone)]
 pub struct GrafanaAdminClient {
@@ -55,17 +55,17 @@ impl GrafanaAdminClient {
     }
 
     pub async fn wait_for_health(&self) -> Result<(), Error> {
-        for attempt in 1..=40 {
-            if self.is_healthy().await {
+        for attempt in 1..=12 {
+            if self.is_healthy(attempt).await {
                 info!(attempt, "Grafana is healthy");
                 return Ok(());
             }
-            if attempt < 40 {
+            if attempt < 12 {
                 info!(attempt, "Waiting for Grafana health");
-                sleep(Duration::from_secs(15)).await;
+                sleep(Duration::from_secs(5)).await;
             }
         }
-        Err(std::io::Error::other("Grafana did not become healthy within 10 minutes").into())
+        Err(std::io::Error::other("Grafana did not become healthy within 1 minute").into())
     }
 
     pub async fn ensure_service_account(
@@ -95,13 +95,14 @@ impl GrafanaAdminClient {
             .await
     }
 
-    async fn is_healthy(&self) -> bool {
-        self.http
-            .get(self.url("/api/health"))
-            .send()
-            .await
-            .map(|response| response.status().is_success())
-            .unwrap_or(false)
+    async fn is_healthy(&self, attempt: u8) -> bool {
+        match self.http.get(self.url("/api/health")).send().await {
+            Ok(response) => response.status().is_success(),
+            Err(error) => {
+                warn!(attempt, error = %error, "Grafana health check failed");
+                false
+            }
+        }
     }
 
     async fn find_service_account(&self, name: &str) -> Result<Option<ServiceAccount>, Error> {
