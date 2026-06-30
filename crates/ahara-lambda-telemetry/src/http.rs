@@ -14,8 +14,8 @@ use tracing::Instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
-    init_lambda_logging, metrics, HttpRequestErrorEvent, HttpRequestEvent, OperationKind,
-    TelemetryConfig, TelemetryLogger, TracingTelemetryLogger,
+    flush_lambda_telemetry, init_lambda_logging, metrics, HttpRequestErrorEvent, HttpRequestEvent,
+    OperationKind, TelemetryConfig, TelemetryLogger, TracingTelemetryLogger,
 };
 
 #[derive(Clone, Debug)]
@@ -104,6 +104,8 @@ where
                         status_code,
                         duration_ms: started_at.elapsed().as_millis(),
                     });
+                    drop(span);
+                    flush_lambda_telemetry();
                     Ok(response)
                 }
                 Err(error) => {
@@ -118,6 +120,8 @@ where
                         duration_ms: started_at.elapsed().as_millis(),
                         error: &error,
                     });
+                    drop(span);
+                    flush_lambda_telemetry();
                     Err(error)
                 }
             }

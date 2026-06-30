@@ -1,5 +1,5 @@
 use std::fmt;
-use std::sync::Once;
+use std::sync::{Once, OnceLock};
 
 use opentelemetry_appender_tracing::layer::OpenTelemetryTracingBridge;
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -9,10 +9,12 @@ use tracing_subscriber::util::SubscriberInitExt;
 use crate::{metrics, otel, OperationDetails, OperationKind, TelemetryConfig};
 
 static INIT_LOGGING: Once = Once::new();
+static OTEL_PROVIDERS: OnceLock<&'static otel::OtelProviders> = OnceLock::new();
 
 pub fn init_lambda_logging(config: &TelemetryConfig) {
     INIT_LOGGING.call_once(|| {
-        let providers = Box::leak(Box::new(otel::init_otel(config)));
+        let providers: &'static otel::OtelProviders = Box::leak(Box::new(otel::init_otel(config)));
+        let _ = OTEL_PROVIDERS.set(providers);
         let fmt_layer = tracing_subscriber::fmt::layer()
             .json()
             .with_span_events(FmtSpan::CLOSE);
@@ -58,6 +60,12 @@ pub fn init_lambda_logging(config: &TelemetryConfig) {
         let _meter_provider = providers.meter_provider.as_ref();
         TracingTelemetryLogger.startup(config);
     });
+}
+
+pub fn flush_lambda_telemetry() {
+    if let Some(providers) = OTEL_PROVIDERS.get() {
+        providers.force_flush();
+    }
 }
 
 fn env_filter() -> tracing_subscriber::EnvFilter {

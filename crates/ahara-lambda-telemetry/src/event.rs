@@ -13,8 +13,8 @@ use tracing::Instrument;
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 use crate::{
-    init_lambda_logging, LambdaInvocationErrorEvent, LambdaInvocationEvent, TelemetryConfig,
-    TelemetryLogger, TracingTelemetryLogger,
+    flush_lambda_telemetry, init_lambda_logging, LambdaInvocationErrorEvent, LambdaInvocationEvent,
+    TelemetryConfig, TelemetryLogger, TracingTelemetryLogger,
 };
 
 #[derive(Clone, Debug)]
@@ -119,6 +119,8 @@ where
                         event_type: event_context.event_type,
                         duration_ms: Some(started_at.elapsed().as_millis()),
                     });
+                    drop(span);
+                    flush_lambda_telemetry();
                     Ok(response)
                 }
                 Err(error) => {
@@ -137,6 +139,8 @@ where
                         },
                         error: &error,
                     });
+                    drop(span);
+                    flush_lambda_telemetry();
                     Err(error)
                 }
             }

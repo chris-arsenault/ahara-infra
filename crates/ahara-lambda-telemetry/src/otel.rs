@@ -18,6 +18,26 @@ pub(crate) struct OtelProviders {
     pub(crate) logger_provider: Option<SdkLoggerProvider>,
 }
 
+impl OtelProviders {
+    pub(crate) fn force_flush(&self) {
+        if let Some(provider) = &self.tracer_provider {
+            report_flush_result("traces", provider.force_flush());
+        }
+        if let Some(provider) = &self.meter_provider {
+            report_flush_result("metrics", provider.force_flush());
+        }
+        if let Some(provider) = &self.logger_provider {
+            report_flush_result("logs", provider.force_flush());
+        }
+    }
+}
+
+fn report_flush_result(signal: &str, result: opentelemetry_sdk::error::OTelSdkResult) {
+    if let Err(err) = result {
+        eprintln!("failed to flush OTEL {signal}: {err}");
+    }
+}
+
 pub(crate) fn init_otel(config: &TelemetryConfig) -> OtelProviders {
     if sdk_disabled() {
         return OtelProviders {
