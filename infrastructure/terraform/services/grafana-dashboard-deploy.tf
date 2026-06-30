@@ -41,6 +41,11 @@ resource "aws_iam_role_policy_attachment" "grafana_dashboard_deploy_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_role_policy_attachment" "grafana_dashboard_deploy_vpc" {
+  role       = aws_iam_role.grafana_dashboard_deploy.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
 resource "aws_iam_role_policy" "grafana_dashboard_deploy_ssm" {
   name = "${local.prefix}-grafana-dashboard-deploy-ssm"
   role = aws_iam_role.grafana_dashboard_deploy.id
@@ -69,13 +74,17 @@ resource "aws_lambda_function" "grafana_dashboard_deploy" {
   memory_size                    = 128
   reserved_concurrent_executions = 2
 
+  vpc_config {
+    subnet_ids         = var.private_subnet_ids
+    security_group_ids = [var.ahara_lambda_sg_id]
+  }
+
   environment {
     variables = {
       GRAFANA_ALLOWED_DATASOURCE_UIDS = "victoriametrics,loki,tempo,influxdb-sensors,fewxrdtvmrk00a,aezaej38ebf9ce"
       GRAFANA_MANAGED_TAG_PREFIX      = "ahara:repo:"
-      GRAFANA_NAMESPACE               = "default"
       GRAFANA_TOKEN_PARAMETER         = local.grafana_dashboard_deploy_token_parameter
-      GRAFANA_URL                     = "https://dashboards.services.ahara.io"
+      GRAFANA_URL                     = "http://192.168.66.3:30038"
     }
   }
 

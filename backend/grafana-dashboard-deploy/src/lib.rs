@@ -35,12 +35,7 @@ pub async fn handler(
 ) -> Result<DeployResponse, Error> {
     validate_request(&request)?;
     let token = grafana_token(&state.ssm, &state.config.token_parameter).await?;
-    let client = GrafanaClient::new(
-        state.http.clone(),
-        state.config.grafana_url.clone(),
-        token,
-        state.config.namespace.clone(),
-    );
+    let client = GrafanaClient::new(state.http.clone(), state.config.grafana_url.clone(), token);
     deploy_dashboards(request, &state.config, &client).await
 }
 

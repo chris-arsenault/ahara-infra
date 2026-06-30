@@ -24,7 +24,7 @@ impl BootstrapConfig {
             service_account_name: env::var("GRAFANA_SERVICE_ACCOUNT_NAME")
                 .unwrap_or_else(|_| "ahara-dashboard-deployer".into()),
             service_account_role: env::var("GRAFANA_SERVICE_ACCOUNT_ROLE")
-                .unwrap_or_else(|_| "Editor".into()),
+                .unwrap_or_else(|_| "Admin".into()),
             token_name: env::var("GRAFANA_TOKEN_NAME")
                 .unwrap_or_else(|_| "ci-dashboard-deployer".into()),
         }

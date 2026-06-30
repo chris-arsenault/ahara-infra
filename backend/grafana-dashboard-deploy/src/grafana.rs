@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use lambda_runtime::Error;
 use reqwest::{Client, Method, StatusCode};
 use serde::Deserialize;
@@ -7,38 +5,41 @@ use serde_json::{json, Value};
 
 use crate::request::{DashboardAction, DashboardResult, PreparedDashboard, PrunedDashboard};
 
-const FOLDER_ANNOTATION: &str = "grafana.app/folder";
-const MESSAGE_ANNOTATION: &str = "grafana.app/message";
-
 #[derive(Clone)]
 pub struct GrafanaClient {
     http: Client,
     base_url: String,
     token: String,
-    namespace: String,
 }
 
 impl GrafanaClient {
-    pub fn new(http: Client, base_url: String, token: String, namespace: String) -> Self {
+    pub fn new(http: Client, base_url: String, token: String) -> Self {
         Self {
             http,
             base_url: base_url.trim_end_matches('/').to_string(),
             token,
-            namespace,
         }
     }
 
     pub async fn ensure_folder(&self, uid: &str, title: &str) -> Result<(), Error> {
         match self.get_folder(uid).await? {
-            Some(folder) if folder.title() == title => Ok(()),
+            Some(folder) if folder.title == title => Ok(()),
             Some(_) => {
-                self.put_json(&folder_path(&self.namespace, uid), folder_body(uid, title))
-                    .await?;
+                self.request_json(
+                    Method::PUT,
+                    &format!("/api/folders/{uid}"),
+                    Some(json!({ "title": title })),
+                )
+                .await?;
                 Ok(())
             }
             None => {
-                self.post_json(&folders_path(&self.namespace), folder_body(uid, title))
-                    .await?;
+                self.request_json(
+                    Method::POST,
+                    "/api/folders",
+                    Some(json!({ "uid": uid, "title": title })),
+                )
+                .await?;
                 Ok(())
             }
         }
@@ -50,18 +51,19 @@ impl GrafanaClient {
         folder_uid: &str,
         message: &str,
     ) -> Result<DashboardResult, Error> {
-        let exists = self.get_dashboard(&dashboard.uid).await?.is_some();
-        let body = dashboard_body(dashboard, folder_uid, message);
-        let path = dashboard_path(&self.namespace, &dashboard.uid);
+        let exists = self.dashboard_exists(&dashboard.uid).await?;
+        self.request_json(
+            Method::POST,
+            "/api/dashboards/db",
+            Some(dashboard_body(dashboard, folder_uid, message)),
+        )
+        .await?;
+
         let action = if exists {
-            self.put_json(&path, body).await?;
             DashboardAction::Updated
         } else {
-            self.post_json(&dashboards_path(&self.namespace), body)
-                .await?;
             DashboardAction::Created
         };
-
         Ok(DashboardResult {
             path: dashboard.path.clone(),
             uid: dashboard.uid.clone(),
@@ -80,10 +82,9 @@ impl GrafanaClient {
         let desired = desired_uids
             .iter()
             .collect::<std::collections::BTreeSet<_>>();
-        let dashboards = self.managed_dashboards(folder_uid, repo_tag).await?;
         let mut pruned = Vec::new();
 
-        for dashboard in dashboards {
+        for dashboard in self.managed_dashboards(folder_uid, repo_tag).await? {
             if desired.contains(&dashboard.uid) {
                 continue;
             }
@@ -97,83 +98,54 @@ impl GrafanaClient {
         Ok(pruned)
     }
 
-    async fn get_folder(&self, uid: &str) -> Result<Option<FolderResource>, Error> {
-        self.get_optional_json(&folder_path(&self.namespace, uid))
-            .await
+    async fn get_folder(&self, uid: &str) -> Result<Option<Folder>, Error> {
+        self.get_optional_json(&format!("/api/folders/{uid}")).await
     }
 
-    async fn get_dashboard(&self, uid: &str) -> Result<Option<Value>, Error> {
-        self.get_optional_json(&dashboard_path(&self.namespace, uid))
+    async fn dashboard_exists(&self, uid: &str) -> Result<bool, Error> {
+        self.get_optional_json::<Value>(&format!("/api/dashboards/uid/{uid}"))
             .await
+            .map(|dashboard| dashboard.is_some())
     }
 
     async fn managed_dashboards(
         &self,
         folder_uid: &str,
         repo_tag: &str,
-    ) -> Result<Vec<ManagedDashboard>, Error> {
-        let mut dashboards = Vec::new();
-        let mut continue_token = None;
-
-        loop {
-            let page = self.list_dashboard_page(continue_token.as_deref()).await?;
-            for item in page.items {
-                if item.matches(folder_uid, repo_tag) {
-                    let title = item.spec_title();
-                    dashboards.push(ManagedDashboard {
-                        uid: item.metadata.name,
-                        title,
-                    });
-                }
-            }
-            continue_token = page.metadata.and_then(|metadata| metadata.continue_token);
-            if continue_token.is_none() {
-                break;
-            }
-        }
-
-        Ok(dashboards)
-    }
-
-    async fn list_dashboard_page(
-        &self,
-        continue_token: Option<&str>,
-    ) -> Result<ResourceList, Error> {
-        let url = self.url(&dashboards_path(&self.namespace));
+    ) -> Result<Vec<SearchDashboard>, Error> {
         let mut request = self
             .http
-            .get(url)
+            .get(self.url("/api/search"))
             .bearer_auth(&self.token)
-            .query(&[("limit", "500")]);
-        if let Some(token) = continue_token {
-            request = request.query(&[("continue", token)]);
-        }
+            .query(&[
+                ("type", "dash-db"),
+                ("folderUIDs", folder_uid),
+                ("tag", repo_tag),
+                ("limit", "5000"),
+            ]);
+        request = request.query(&[("deleted", "false")]);
         let response = request.send().await.map_err(to_error)?;
-        decode_response(response).await
+        let dashboards: Vec<SearchDashboard> =
+            decode_response(response, "GET", "/api/search").await?;
+        Ok(dashboards
+            .into_iter()
+            .filter(|dashboard| dashboard.matches(folder_uid, repo_tag))
+            .collect())
     }
 
     async fn delete_dashboard(&self, uid: &str) -> Result<(), Error> {
-        self.request_json(Method::DELETE, &dashboard_path(&self.namespace, uid), None)
+        self.request_json(Method::DELETE, &format!("/api/dashboards/uid/{uid}"), None)
             .await?;
         Ok(())
-    }
-
-    async fn post_json(&self, path: &str, body: Value) -> Result<Value, Error> {
-        self.request_json(Method::POST, path, Some(body)).await
-    }
-
-    async fn put_json(&self, path: &str, body: Value) -> Result<Value, Error> {
-        self.request_json(Method::PUT, path, Some(body)).await
     }
 
     async fn get_optional_json<T>(&self, path: &str) -> Result<Option<T>, Error>
     where
         T: for<'de> Deserialize<'de>,
     {
-        let url = self.url(path);
         let response = self
             .http
-            .get(url)
+            .get(self.url(path))
             .bearer_auth(&self.token)
             .send()
             .await
@@ -181,7 +153,7 @@ impl GrafanaClient {
         if response.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
-        decode_response(response).await.map(Some)
+        decode_response(response, "GET", path).await.map(Some)
     }
 
     async fn request_json(
@@ -192,13 +164,13 @@ impl GrafanaClient {
     ) -> Result<Value, Error> {
         let mut request = self
             .http
-            .request(method, self.url(path))
+            .request(method.clone(), self.url(path))
             .bearer_auth(&self.token);
         if let Some(body) = body {
             request = request.json(&body);
         }
         let response = request.send().await.map_err(to_error)?;
-        decode_response(response).await
+        decode_response(response, method.as_str(), path).await
     }
 
     fn url(&self, path: &str) -> String {
@@ -206,54 +178,29 @@ impl GrafanaClient {
     }
 }
 
-fn folders_path(namespace: &str) -> String {
-    format!("/apis/folder.grafana.app/v1/namespaces/{namespace}/folders")
-}
-
-fn folder_path(namespace: &str, uid: &str) -> String {
-    format!("{}/{}", folders_path(namespace), uid)
-}
-
-fn dashboards_path(namespace: &str) -> String {
-    format!("/apis/dashboard.grafana.app/v1/namespaces/{namespace}/dashboards")
-}
-
-fn dashboard_path(namespace: &str, uid: &str) -> String {
-    format!("{}/{}", dashboards_path(namespace), uid)
-}
-
-fn folder_body(uid: &str, title: &str) -> Value {
-    json!({
-        "apiVersion": "folder.grafana.app/v1",
-        "kind": "Folder",
-        "metadata": { "name": uid },
-        "spec": { "title": title }
-    })
-}
-
 fn dashboard_body(dashboard: &PreparedDashboard, folder_uid: &str, message: &str) -> Value {
     json!({
-        "apiVersion": "dashboard.grafana.app/v1",
-        "kind": "Dashboard",
-        "metadata": {
-            "name": dashboard.uid,
-            "annotations": {
-                FOLDER_ANNOTATION: folder_uid,
-                MESSAGE_ANNOTATION: message
-            }
-        },
-        "spec": dashboard.dashboard
+        "dashboard": dashboard.dashboard,
+        "folderUid": folder_uid,
+        "message": message,
+        "overwrite": true
     })
 }
 
-async fn decode_response<T>(response: reqwest::Response) -> Result<T, Error>
+async fn decode_response<T>(
+    response: reqwest::Response,
+    method: &str,
+    path: &str,
+) -> Result<T, Error>
 where
     T: for<'de> Deserialize<'de>,
 {
     let status = response.status();
     let text = response.text().await.map_err(to_error)?;
     if !status.is_success() {
-        return Err(error(format!("Grafana API {status}: {text}")));
+        return Err(error(format!(
+            "Grafana {method} {path} failed with {status}: {text}"
+        )));
     }
     if text.trim().is_empty() {
         serde_json::from_value(Value::Null).map_err(to_error)
@@ -271,78 +218,64 @@ fn error(message: impl Into<String>) -> Error {
 }
 
 #[derive(Deserialize)]
-struct FolderResource {
-    spec: FolderSpec,
-}
-
-impl FolderResource {
-    fn title(&self) -> &str {
-        &self.spec.title
-    }
-}
-
-#[derive(Deserialize)]
-struct FolderSpec {
+struct Folder {
     title: String,
 }
 
 #[derive(Deserialize)]
-struct ResourceList {
-    metadata: Option<ListMetadata>,
-    #[serde(default)]
-    items: Vec<DashboardResource>,
-}
-
-#[derive(Deserialize)]
-struct ListMetadata {
-    #[serde(rename = "continue")]
-    continue_token: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct DashboardResource {
-    metadata: ResourceMetadata,
-    spec: Value,
-}
-
-impl DashboardResource {
-    fn matches(&self, folder_uid: &str, repo_tag: &str) -> bool {
-        self.in_folder(folder_uid) && self.has_tag(repo_tag)
-    }
-
-    fn in_folder(&self, folder_uid: &str) -> bool {
-        self.metadata
-            .annotations
-            .as_ref()
-            .and_then(|annotations| annotations.get(FOLDER_ANNOTATION))
-            .map(|value| value == folder_uid)
-            .unwrap_or_default()
-    }
-
-    fn has_tag(&self, tag: &str) -> bool {
-        self.spec
-            .get("tags")
-            .and_then(Value::as_array)
-            .map(|tags| tags.iter().any(|value| value.as_str() == Some(tag)))
-            .unwrap_or_default()
-    }
-
-    fn spec_title(&self) -> String {
-        self.spec
-            .get("title")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string()
-    }
-}
-
-#[derive(Deserialize)]
-struct ResourceMetadata {
-    name: String,
-    annotations: Option<HashMap<String, String>>,
-}
-
-struct ManagedDashboard {
+struct SearchDashboard {
     uid: String,
     title: String,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default, rename = "folderUid")]
+    folder_uid: Option<String>,
+}
+
+impl SearchDashboard {
+    fn matches(&self, folder_uid: &str, repo_tag: &str) -> bool {
+        self.folder_uid.as_deref() == Some(folder_uid)
+            && self.tags.iter().any(|tag| tag == repo_tag)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn dashboard_body_uses_classic_grafana_api_shape() {
+        let dashboard = PreparedDashboard {
+            path: "dashboards/example.json".into(),
+            uid: "example".into(),
+            title: "Example".into(),
+            dashboard: json!({ "uid": "example", "title": "Example" }),
+        };
+
+        assert_eq!(
+            dashboard_body(&dashboard, "folder", "deploy"),
+            json!({
+                "dashboard": { "uid": "example", "title": "Example" },
+                "folderUid": "folder",
+                "message": "deploy",
+                "overwrite": true
+            })
+        );
+    }
+
+    #[test]
+    fn search_dashboard_matches_managed_folder_and_repo_tag() {
+        let dashboard = SearchDashboard {
+            uid: "env".into(),
+            title: "Environment".into(),
+            folder_uid: Some("house-sensors".into()),
+            tags: vec!["ahara:managed".into(), "ahara:repo:house-sensors".into()],
+        };
+
+        assert!(dashboard.matches("house-sensors", "ahara:repo:house-sensors"));
+        assert!(!dashboard.matches("other", "ahara:repo:house-sensors"));
+        assert!(!dashboard.matches("house-sensors", "ahara:repo:other"));
+    }
 }

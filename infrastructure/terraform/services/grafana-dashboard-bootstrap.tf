@@ -81,7 +81,7 @@ resource "aws_lambda_function" "grafana_dashboard_bootstrap" {
       GRAFANA_ADMIN_PASSWORD_PARAMETER = "${local.ssm_prefix}/observability/grafana-admin-password"
       GRAFANA_ADMIN_USER               = "admin"
       GRAFANA_SERVICE_ACCOUNT_NAME     = "ahara-dashboard-deployer"
-      GRAFANA_SERVICE_ACCOUNT_ROLE     = "Editor"
+      GRAFANA_SERVICE_ACCOUNT_ROLE     = "Admin"
       GRAFANA_TOKEN_NAME               = "ci-dashboard-deployer"
       GRAFANA_TOKEN_PARAMETER          = local.grafana_dashboard_deploy_token_parameter
       GRAFANA_URL                      = "http://192.168.66.3:30038"
