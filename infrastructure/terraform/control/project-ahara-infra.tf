@@ -32,8 +32,7 @@ module "ahara_infra_project" {
   #                              ec2-security-groups, iam-instance-profiles,
   #                              db-migrate
   #   project-ahara-network.tf:  ec2-vpc-compute, alb-loadbalancer,
-  #                              alb-target-group, wafv2,
-  #                              cloudfront-distribution, acm-dns,
+  #                              alb-target-group, wafv2, acm-dns,
   #                              cognito-identity-pool, iam-roles,
   #                              secrets-manager
   policy_modules = [
@@ -55,7 +54,6 @@ module "ahara_infra_project" {
     "alb-loadbalancer",
     "alb-target-group",
     "wafv2",
-    "cloudfront-distribution",
     "acm-dns",
     "secrets-manager",
     "security-audit",

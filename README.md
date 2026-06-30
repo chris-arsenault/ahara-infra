@@ -17,7 +17,7 @@ cd backend && cargo lambda build --release
 | Layer | Owns | Terraform path |
 |---|---|---|
 | control | OIDC provider, deployer IAM roles, policy library, per-project deployer modules | `infrastructure/terraform/control/` |
-| network | VPC, subnets, NAT, ALB, WireGuard, Route53, WAF, CloudFront reverse proxy | `infrastructure/terraform/network/` |
+| network | VPC, subnets, NAT, ALB, WireGuard, Route53, WAF, reverse proxy | `infrastructure/terraform/network/` |
 | services | Cognito, RDS, 7 Rust Lambdas (auth-trigger, ci-ingest, cors-handler, db-migrate, db-migrate-truenas, komodo-proxy, og-server) | `infrastructure/terraform/services/` |
 
 All three layers share a single Terraform state (`ahara/infra.tfstate` in
