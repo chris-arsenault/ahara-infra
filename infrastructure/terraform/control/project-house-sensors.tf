@@ -17,7 +17,6 @@ module "project_house_sensors" {
     "komodo-deploy",
     "grafana-dashboard-deploy",
     "s3-private-storage",
-    "iam-users",
     "ssm-write",
   ]
 

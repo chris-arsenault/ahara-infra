@@ -99,12 +99,6 @@ module "iam-roles" {
   account_id = var.account_id
 }
 
-module "iam-users" {
-  source     = "../policy-library/iam-users"
-  prefix     = var.prefix
-  account_id = var.account_id
-}
-
 module "iam-instance-profiles" {
   source     = "../policy-library/iam-instance-profiles"
   prefix     = var.prefix
@@ -236,7 +230,6 @@ locals {
     "cognito-pool"             = module.cognito-pool.policy_json
     "cognito-identity-pool"    = module.cognito-identity-pool.policy_json
     "iam-roles"                = module.iam-roles.policy_json
-    "iam-users"                = module.iam-users.policy_json
     "iam-instance-profiles"    = module.iam-instance-profiles.policy_json
     "db-migrate"               = module.db-migrate.policy_json
     "rds"                      = module.rds.policy_json
