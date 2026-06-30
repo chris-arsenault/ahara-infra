@@ -63,3 +63,22 @@ resource "aws_cognito_user_pool_client" "alb" {
     "https://dashboards.${local.services_domain}/logout"
   ]
 }
+
+resource "aws_cognito_user_pool_client" "grafana" {
+  name         = "${local.prefix}-grafana"
+  user_pool_id = module.cognito.user_pool_id
+
+  generate_secret                      = true
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["openid", "email", "profile"]
+  allowed_oauth_flows_user_pool_client = true
+  supported_identity_providers         = ["COGNITO"]
+
+  callback_urls = [
+    "https://dashboards.${local.services_domain}/login/generic_oauth"
+  ]
+
+  logout_urls = [
+    "https://dashboards.${local.services_domain}/login"
+  ]
+}

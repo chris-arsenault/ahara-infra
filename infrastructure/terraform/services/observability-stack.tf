@@ -30,6 +30,18 @@ resource "aws_ssm_parameter" "observability_grafana_secret_key" {
   value = random_password.observability_grafana_secret_key.result
 }
 
+resource "aws_ssm_parameter" "observability_grafana_cognito_client_id" {
+  name  = "${local.ssm_prefix}/observability/grafana-cognito-client-id"
+  type  = "String"
+  value = aws_cognito_user_pool_client.grafana.id
+}
+
+resource "aws_ssm_parameter" "observability_grafana_cognito_client_secret" {
+  name  = "${local.ssm_prefix}/observability/grafana-cognito-client-secret"
+  type  = "SecureString"
+  value = aws_cognito_user_pool_client.grafana.client_secret
+}
+
 resource "aws_ssm_parameter" "observability_influxdb_admin_password" {
   name  = "${local.ssm_prefix}/observability/influxdb-admin-password"
   type  = "SecureString"

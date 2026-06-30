@@ -31,7 +31,7 @@ locals {
     "dashboards.services.ahara.io" = {
       address = "192.168.66.3"
       port    = 30038
-      auth    = "cognito"
+      auth    = "passthrough"
     }
     "sonar.services.ahara.io" = {
       address       = "192.168.66.3"

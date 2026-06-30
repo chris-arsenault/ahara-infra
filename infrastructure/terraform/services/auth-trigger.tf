@@ -95,6 +95,7 @@ resource "aws_ssm_parameter" "auth_client_map" {
   type = "String"
   value = jsonencode(merge(
     { for key, id in module.cognito.client_ids : id => key },
+    { (aws_cognito_user_pool_client.grafana.id) = "grafana" },
     local.external_client_map
   ))
 }
