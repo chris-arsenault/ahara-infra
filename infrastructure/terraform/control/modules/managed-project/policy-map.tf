@@ -99,6 +99,12 @@ module "iam-roles" {
   account_id = var.account_id
 }
 
+module "iam-users" {
+  source     = "../policy-library/iam-users"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 module "iam-instance-profiles" {
   source     = "../policy-library/iam-instance-profiles"
   prefix     = var.prefix
@@ -191,6 +197,12 @@ module "komodo-deploy" {
   account_id = var.account_id
 }
 
+module "grafana-dashboard-deploy" {
+  source     = "../policy-library/grafana-dashboard-deploy"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 # ── Account Governance ───────────────────────────────────────
 
 module "budgets-costexplorer" {
@@ -209,36 +221,38 @@ module "security-audit" {
 
 locals {
   policy_map = {
-    "terraform-state"         = module.terraform-state.policy_json
-    "control-plane"           = module.control-plane.policy_json
-    "lambda-deploy"           = module.lambda-deploy.policy_json
-    "alb-target-group"        = module.alb-target-group.policy_json
-    "alb-loadbalancer"        = module.alb-loadbalancer.policy_json
-    "dynamodb"                = module.dynamodb.policy_json
-    "bedrock-inference"       = module.bedrock-inference.policy_json
-    "s3-website"              = module.s3-website.policy_json
-    "cloudfront-distribution" = module.cloudfront-distribution.policy_json
-    "cloudwatch-rum"          = module.cloudwatch-rum.policy_json
-    "acm-dns"                 = module.acm-dns.policy_json
-    "cognito-client"          = module.cognito-client.policy_json
-    "cognito-pool"            = module.cognito-pool.policy_json
-    "cognito-identity-pool"   = module.cognito-identity-pool.policy_json
-    "iam-roles"               = module.iam-roles.policy_json
-    "iam-instance-profiles"   = module.iam-instance-profiles.policy_json
-    "db-migrate"              = module.db-migrate.policy_json
-    "rds"                     = module.rds.policy_json
-    "sns"                     = module.sns.policy_json
-    "ses"                     = module.ses.policy_json
-    "s3-private-storage"      = module.s3_private_storage.policy_json
-    "cloudwatch-alarms"       = module.cloudwatch-alarms.policy_json
-    "ssm-write"               = module.ssm-write.policy_json
-    "secrets-manager"         = module.secrets-manager.policy_json
-    "kms-admin"               = module.kms-admin.policy_json
-    "ec2-security-groups"     = module.ec2-security-groups.policy_json
-    "ec2-vpc-compute"         = module.ec2-vpc-compute.policy_json
-    "wafv2"                   = module.wafv2.policy_json
-    "komodo-deploy"           = module.komodo-deploy.policy_json
-    "budgets-costexplorer"    = module.budgets-costexplorer.policy_json
-    "security-audit"          = module.security-audit.policy_json
+    "terraform-state"          = module.terraform-state.policy_json
+    "control-plane"            = module.control-plane.policy_json
+    "lambda-deploy"            = module.lambda-deploy.policy_json
+    "alb-target-group"         = module.alb-target-group.policy_json
+    "alb-loadbalancer"         = module.alb-loadbalancer.policy_json
+    "dynamodb"                 = module.dynamodb.policy_json
+    "bedrock-inference"        = module.bedrock-inference.policy_json
+    "s3-website"               = module.s3-website.policy_json
+    "cloudfront-distribution"  = module.cloudfront-distribution.policy_json
+    "cloudwatch-rum"           = module.cloudwatch-rum.policy_json
+    "acm-dns"                  = module.acm-dns.policy_json
+    "cognito-client"           = module.cognito-client.policy_json
+    "cognito-pool"             = module.cognito-pool.policy_json
+    "cognito-identity-pool"    = module.cognito-identity-pool.policy_json
+    "iam-roles"                = module.iam-roles.policy_json
+    "iam-users"                = module.iam-users.policy_json
+    "iam-instance-profiles"    = module.iam-instance-profiles.policy_json
+    "db-migrate"               = module.db-migrate.policy_json
+    "rds"                      = module.rds.policy_json
+    "sns"                      = module.sns.policy_json
+    "ses"                      = module.ses.policy_json
+    "s3-private-storage"       = module.s3_private_storage.policy_json
+    "cloudwatch-alarms"        = module.cloudwatch-alarms.policy_json
+    "ssm-write"                = module.ssm-write.policy_json
+    "secrets-manager"          = module.secrets-manager.policy_json
+    "kms-admin"                = module.kms-admin.policy_json
+    "ec2-security-groups"      = module.ec2-security-groups.policy_json
+    "ec2-vpc-compute"          = module.ec2-vpc-compute.policy_json
+    "wafv2"                    = module.wafv2.policy_json
+    "komodo-deploy"            = module.komodo-deploy.policy_json
+    "grafana-dashboard-deploy" = module.grafana-dashboard-deploy.policy_json
+    "budgets-costexplorer"     = module.budgets-costexplorer.policy_json
+    "security-audit"           = module.security-audit.policy_json
   }
 }

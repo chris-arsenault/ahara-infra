@@ -19,6 +19,7 @@ module "project_linkdrop" {
   policy_modules = [
     "terraform-state",
     "db-migrate",
+    "grafana-dashboard-deploy",
     "s3-private-storage",
     "ssm-write",
     "cloudwatch-alarms",

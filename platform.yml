@@ -13,6 +13,7 @@ rust_artifacts:
     - cors-handler
     - db-migrate
     - db-migrate-truenas
+    - grafana-dashboard-deploy
     - komodo-proxy
     - og-server
     - ops-dashboard

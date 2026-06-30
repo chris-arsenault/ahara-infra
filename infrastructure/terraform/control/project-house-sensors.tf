@@ -15,5 +15,13 @@ module "project_house_sensors" {
   policy_modules = [
     "terraform-state",
     "komodo-deploy",
+    "grafana-dashboard-deploy",
+    "s3-private-storage",
+    "iam-users",
+    "ssm-write",
+  ]
+
+  ssm_additional_parameter_paths = [
+    "ahara/house-sensors/*",
   ]
 }

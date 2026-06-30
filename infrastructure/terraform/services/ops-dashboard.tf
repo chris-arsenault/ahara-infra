@@ -1,5 +1,6 @@
 # =============================================================================
-# Ops Dashboard Lambda — CloudWatch Logs Insights over Ahara OTEL-style logs
+# Legacy Ops Dashboard Lambda — CloudWatch Logs Insights fallback only.
+# Product telemetry dashboards belong in ahara-observability Grafana via OTLP.
 # =============================================================================
 
 locals {

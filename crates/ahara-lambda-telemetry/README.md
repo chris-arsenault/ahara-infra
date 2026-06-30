@@ -3,14 +3,16 @@
 Shared Rust Lambda telemetry for Ahara projects.
 
 The crate standardizes Rust Lambda telemetry on top of `tracing` and
-OpenTelemetry. It emits structured JSON logs for CloudWatch debugging and, when
-standard OTEL environment variables are configured, exports OTLP traces and
-metrics to an OpenTelemetry Collector or compatible vendor/backend.
+OpenTelemetry. It emits structured JSON logs to Lambda stdout/stderr, which AWS
+keeps in CloudWatch as a fallback/runtime surface. When standard OTEL
+environment variables are configured, it exports OTLP logs, traces, and metrics
+to the Ahara reverse-proxy OTLP gateway.
 
-Ahara dashboards should be built in standard OTEL tooling such as Grafana,
-Tempo/Loki/Prometheus, Honeycomb, Datadog, New Relic, or AWS observability
-surfaces. Product UIs may link to or summarize that data, but this crate is the
-instrumentation contract.
+Ahara product dashboards must be built in the shared Grafana stack at
+`dashboards.services.ahara.io`, backed by Loki, Tempo, and VictoriaMetrics.
+Do not create CloudWatch dashboards for product telemetry. CloudWatch remains
+useful for fallback Lambda logs and selected AWS-native alarms, not as the
+primary product observability surface.
 
 ## OTLP Export
 
@@ -22,7 +24,7 @@ exporter flag or an OTLP endpoint is present:
 OTEL_TRACES_EXPORTER=otlp
 OTEL_METRICS_EXPORTER=otlp
 OTEL_LOGS_EXPORTER=otlp
-OTEL_EXPORTER_OTLP_ENDPOINT=http://collector:4318
+OTEL_EXPORTER_OTLP_ENDPOINT=<value of /ahara/observability/otlp-http-endpoint>
 ```
 
 Signal-specific endpoint variables such as

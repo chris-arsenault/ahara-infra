@@ -10,11 +10,14 @@ data "aws_iam_policy_document" "this" {
     sid    = "SsmParameterWrite"
     effect = "Allow"
     actions = [
-      "ssm:PutParameter",
-      "ssm:DeleteParameter",
       "ssm:AddTagsToResource",
+      "ssm:DeleteParameter",
+      "ssm:DescribeParameters",
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:ListTagsForResource",
+      "ssm:PutParameter",
       "ssm:RemoveTagsFromResource",
-      "ssm:ListTagsForResource"
     ]
     resources = local.parameter_paths
   }
