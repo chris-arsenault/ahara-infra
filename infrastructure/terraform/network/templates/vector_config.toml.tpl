@@ -6,9 +6,14 @@ type = "file"
 include = ["${log.file_path}"]
 read_from = "beginning"
 
+[transforms.file_${idx}_nonempty]
+type = "filter"
+inputs = ["file_${idx}"]
+condition = 'to_string!(.message) != ""'
+
 [sinks.file_${idx}_cloudwatch]
 type = "aws_cloudwatch_logs"
-inputs = ["file_${idx}"]
+inputs = ["file_${idx}_nonempty"]
 group_name = "${log.log_group_name}"
 stream_name = "${replace(log.log_stream_name, "{instance_id}", "$${INSTANCE_ID}")}"
 region = "$${AWS_REGION}"
