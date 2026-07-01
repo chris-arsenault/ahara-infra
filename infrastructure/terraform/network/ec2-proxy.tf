@@ -23,8 +23,7 @@ module "reverse_proxy" {
     [aws_security_group.reverse_proxy.id],
     [for sg in aws_security_group.reverse_proxy_service : sg.id]
   )
-  refresh_schedule_state  = "DISABLED"
-  enable_instance_refresh = false
+  refresh_schedule_state = "DISABLED"
 
   user_data = templatefile("${path.module}/templates/common_user_data.sh.tpl", {
     EXTRA_SNIPPET = join("\n", [

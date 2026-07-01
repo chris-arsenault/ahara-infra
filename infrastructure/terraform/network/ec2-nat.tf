@@ -16,14 +16,13 @@ resource "aws_iam_role_policy_attachment" "nat_ssm" {
 module "nat" {
   source = "./modules/ec2_instance"
 
-  name                    = "${local.prefix}-nat"
-  iam_instance_profile    = aws_iam_instance_profile.nat.name
-  subnet_id               = aws_subnet.public.id
-  security_group_ids      = [aws_security_group.nat.id]
-  associate_eip           = true
-  instance_type           = "t3.nano"
-  refresh_schedule_state  = "DISABLED"
-  enable_instance_refresh = false
+  name                   = "${local.prefix}-nat"
+  iam_instance_profile   = aws_iam_instance_profile.nat.name
+  subnet_id              = aws_subnet.public.id
+  security_group_ids     = [aws_security_group.nat.id]
+  associate_eip          = true
+  instance_type          = "t3.nano"
+  refresh_schedule_state = "DISABLED"
 
   user_data = templatefile("${path.module}/templates/common_user_data.sh.tpl", {
     EXTRA_SNIPPET = templatefile("${path.module}/templates/nat_instance_user_data.sh.tpl", {

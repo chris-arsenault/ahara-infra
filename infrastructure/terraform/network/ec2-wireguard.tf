@@ -46,12 +46,11 @@ resource "aws_iam_role_policy" "inline_modules" {
 module "wireguard" {
   source = "./modules/ec2_instance"
 
-  name                    = "${local.prefix}-wireguard-server"
-  iam_instance_profile    = aws_iam_instance_profile.wireguard.name
-  subnet_id               = aws_subnet.private.id
-  security_group_ids      = [aws_security_group.wireguard.id]
-  refresh_schedule_state  = "DISABLED"
-  enable_instance_refresh = false
+  name                   = "${local.prefix}-wireguard-server"
+  iam_instance_profile   = aws_iam_instance_profile.wireguard.name
+  subnet_id              = aws_subnet.private.id
+  security_group_ids     = [aws_security_group.wireguard.id]
+  refresh_schedule_state = "DISABLED"
 
   user_data = templatefile("${path.module}/templates/common_user_data.sh.tpl", {
     EXTRA_SNIPPET = templatefile("${path.module}/templates/wireguard_user_data.sh.tpl", {
