@@ -76,6 +76,7 @@ loki.source.journal "journal_${idx}" {
 
 %{ endfor ~}
 %{ if otlp_gateway_enabled ~}
+// ingest-auth: OAuth2 (Cognito M2M) enabled on TrueNAS exporters (rev 1).
 otelcol.receiver.otlp "lambda" {
   grpc {
     endpoint = "0.0.0.0:${truenas_otlp_grpc_port}"
