@@ -165,6 +165,10 @@ systemctl enable --now wg-healthcheck.service
 # only controls the shell that WRITES the file, so the script's own bash
 # variables are preserved literally.
 mkdir -p "${WG_TEXTFILE_DIR}"
+# Explicit read+execute for non-root, independent of umask, so Alloy (running
+# as the unprivileged 'alloy' user) can list and read this directory -- same
+# class of gap as the nginx log-directory permission fix.
+chmod 755 "$(dirname "${WG_TEXTFILE_DIR}")" "${WG_TEXTFILE_DIR}"
 cat >/usr/local/bin/wg-metrics-textfile.sh <<'EOF'
 ${WG_METRICS_SCRIPT}
 EOF

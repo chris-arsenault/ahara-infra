@@ -47,7 +47,15 @@ locals {
   truenas_victoriametrics_port = 8428
   # Where the WireGuard host writes its wg-metrics-textfile.sh output; read by
   # Alloy's prometheus.exporter.unix textfile block on that host only.
-  wg_textfile_dir                 = "/var/lib/alloy/textfile"
+  #
+  # Deliberately NOT under /var/lib/alloy: pre-creating a path there before the
+  # alloy RPM's own useradd step runs leaves /var/lib/alloy root-owned, and the
+  # postinstall skips fixing ownership on an already-existing home directory --
+  # the alloy user then fails to chdir into its own working directory at start
+  # (CHDIR/Permission denied, crash-loops until systemd gives up). Using an
+  # independent path this script fully owns avoids depending on the alloy
+  # package's internal directory layout entirely.
+  wg_textfile_dir                 = "/var/lib/wg-metrics/textfile"
   azs                             = slice(data.aws_availability_zones.available.names, 0, 2)
   az                              = local.azs[0]
   az_secondary                    = local.azs[1]

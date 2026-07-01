@@ -85,6 +85,7 @@ module "reverse_proxy" {
       truenas_victoriametrics_port = local.truenas_victoriametrics_port
       otlp_gateway_enabled         = true
       wg_textfile_dir              = ""
+      enable_host_metrics          = true
       file_logs = [
         {
           file_path = "/var/log/cloud-init-output.log"

@@ -3,12 +3,34 @@ logging {
   format = "logfmt"
 }
 
-// Host health metrics (CPU/mem/disk/net) for every network host — nat,
-// wireguard, and reverse-proxy all render on the "Ahara Network Health"
-// dashboard via the instance label. This is unconditional (all three hosts),
-// unlike the Lambda OTLP-receiver stack below which is reverse-proxy-only.
-// On the WireGuard host, wg_textfile_dir also points this exporter at the
-// WireGuard tunnel-health textfile metrics (see wg_metrics_textfile.sh.tpl).
+%{ if enable_host_metrics || otlp_gateway_enabled ~}
+// Metrics remote-write to TrueNAS VictoriaMetrics, authenticated with the
+// Cognito M2M ingest token. Declared whenever this host sends ANY metrics --
+// host metrics below (enable_host_metrics) and/or the Lambda OTLP pipeline
+// below (otlp_gateway_enabled, reverse-proxy only). NOT declared at all for a
+// host with neither: e.g. NAT has no network route to the TrueNAS LAN (it's a
+// public-subnet egress instance; only the reverse proxy and WireGuard can
+// reach 192.168.66.0/24), so a remote_write there would retry forever and
+// never succeed -- omit it entirely rather than starve it.
+prometheus.remote_write "victoriametrics" {
+  endpoint {
+    url = "http://${truenas_observability_host}:${truenas_victoriametrics_port}/api/v1/write"
+
+    oauth2 {
+      client_id     = sys.env("OBS_INGEST_CLIENT_ID")
+      client_secret = sys.env("OBS_INGEST_CLIENT_SECRET")
+      token_url     = "https://auth.services.ahara.io/oauth2/token"
+      scopes        = ["observability/ingest"]
+    }
+  }
+}
+%{ endif ~}
+
+%{ if enable_host_metrics ~}
+// Host health metrics (CPU/mem/disk/net) for this host, rendering on the
+// "Ahara Network Health" dashboard via the instance label. On the WireGuard
+// host, wg_textfile_dir also points this exporter at the WireGuard
+// tunnel-health textfile metrics (see wg_metrics_textfile.sh.tpl).
 prometheus.exporter.unix "host" {
   include_exporter_metrics = false
 
@@ -43,23 +65,7 @@ prometheus.scrape "host" {
   forward_to      = [prometheus.remote_write.victoriametrics.receiver]
   scrape_interval = "30s"
 }
-
-// Metrics remote-write to TrueNAS VictoriaMetrics, authenticated with the
-// Cognito M2M ingest token. Unconditional (all three hosts feed into this —
-// host metrics above always; the Lambda OTLP pipeline below, reverse-proxy
-// only, also forwards here when otlp_gateway_enabled).
-prometheus.remote_write "victoriametrics" {
-  endpoint {
-    url = "http://${truenas_observability_host}:${truenas_victoriametrics_port}/api/v1/write"
-
-    oauth2 {
-      client_id     = sys.env("OBS_INGEST_CLIENT_ID")
-      client_secret = sys.env("OBS_INGEST_CLIENT_SECRET")
-      token_url     = "https://auth.services.ahara.io/oauth2/token"
-      scopes        = ["observability/ingest"]
-    }
-  }
-}
+%{ endif ~}
 
 loki.write "default" {
   endpoint {
@@ -179,9 +185,9 @@ otelcol.exporter.prometheus "victoriametrics" {
   forward_to = [prometheus.remote_write.victoriametrics.receiver]
 }
 
-// prometheus.remote_write "victoriametrics" is now declared unconditionally
-// near the top of this file (shared with the host-metrics scrape below), so
-// it is not redefined here.
+// prometheus.remote_write "victoriametrics" is declared near the top of this
+// file (shared with the host-metrics scrape) whenever otlp_gateway_enabled is
+// true, so it is not redefined here.
 
 // Self-observability: scrape this gateway collector's own /metrics endpoint
 // (otelcol_* receiver/exporter/queue metrics) and ship them to TrueNAS
