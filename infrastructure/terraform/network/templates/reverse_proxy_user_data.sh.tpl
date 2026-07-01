@@ -53,3 +53,12 @@ server {
 EOF
 
 systemctl enable --now nginx
+
+# /var/log/nginx ships as root:root drwx--x--x, so only root can list it —
+# Vector (root) can read the logs, but Alloy (runs as the unprivileged
+# 'alloy' user, already a member of 'adm' for exactly this purpose per
+# install_alloy()) cannot glob-discover files there, so nginx-access/error
+# never reach Loki even though CloudWatch has them. Group-read the directory
+# for 'adm'; the individual log files are already world-readable (644).
+chgrp adm /var/log/nginx
+chmod 750 /var/log/nginx
