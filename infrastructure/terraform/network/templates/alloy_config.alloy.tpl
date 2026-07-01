@@ -13,6 +13,15 @@ loki.write "default" {
     max_backoff_period  = "30s"
     max_backoff_retries = 10
     name                = "loki"
+
+    // Cognito M2M (client_credentials) auth for the TrueNAS ingest gateway.
+    // client_id/secret are fetched from SSM at boot into the Alloy env file.
+    oauth2 {
+      client_id     = sys.env("OBS_INGEST_CLIENT_ID")
+      client_secret = sys.env("OBS_INGEST_CLIENT_SECRET")
+      token_url     = "https://auth.services.ahara.io/oauth2/token"
+      scopes        = ["observability/ingest"]
+    }
   }
 }
 
@@ -114,6 +123,13 @@ otelcol.exporter.prometheus "victoriametrics" {
 prometheus.remote_write "victoriametrics" {
   endpoint {
     url = "http://${truenas_observability_host}:${truenas_victoriametrics_port}/api/v1/write"
+
+    oauth2 {
+      client_id     = sys.env("OBS_INGEST_CLIENT_ID")
+      client_secret = sys.env("OBS_INGEST_CLIENT_SECRET")
+      token_url     = "https://auth.services.ahara.io/oauth2/token"
+      scopes        = ["observability/ingest"]
+    }
   }
 }
 
@@ -140,11 +156,19 @@ otelcol.exporter.loki "truenas" {
   forward_to = [loki.write.default.receiver]
 }
 
+otelcol.auth.oauth2 "ingest" {
+  client_id     = sys.env("OBS_INGEST_CLIENT_ID")
+  client_secret = sys.env("OBS_INGEST_CLIENT_SECRET")
+  token_url     = "https://auth.services.ahara.io/oauth2/token"
+  scopes        = ["observability/ingest"]
+}
+
 otelcol.exporter.otlp "tempo" {
   timeout = "5s"
 
   client {
     endpoint = "${truenas_observability_host}:${truenas_otlp_grpc_port}"
+    auth     = otelcol.auth.oauth2.ingest.handler
 
     tls {
       insecure = true

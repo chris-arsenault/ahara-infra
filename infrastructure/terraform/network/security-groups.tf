@@ -230,12 +230,19 @@ resource "aws_security_group" "wireguard" {
     }
   }
 
-  ingress {
-    description     = "All TCP from VPN client Lambdas"
-    from_port       = 0
-    to_port         = 65535
-    protocol        = "tcp"
-    security_groups = [aws_security_group.vpn_client.id]
+  # Scoped to the TrueNAS service ports actually modeled in this stack rather
+  # than all-TCP, so a VPN-client Lambda can reach only real services. The
+  # observability data ports (8428/3100/4317/4318) are additionally protected
+  # by Cognito JWT at the ingest gateway. Add a port here if a client needs one.
+  dynamic "ingress" {
+    for_each = toset([53, 3100, 4317, 4318, 5432, 8428, 30038, 30160])
+    content {
+      description     = "TrueNAS service port ${ingress.value} from VPN client Lambdas"
+      from_port       = ingress.value
+      to_port         = ingress.value
+      protocol        = "tcp"
+      security_groups = [aws_security_group.vpn_client.id]
+    }
   }
 
   ingress {
