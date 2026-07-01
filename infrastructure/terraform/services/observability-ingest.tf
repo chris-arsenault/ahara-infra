@@ -61,3 +61,17 @@ resource "aws_ssm_parameter" "observability_ingest_token_url" {
   type  = "String"
   value = "https://${local.auth_domain}/oauth2/token"
 }
+
+# --- Public validation config (consumed by the TrueNAS Envoy ingest gateway) ---
+
+resource "aws_ssm_parameter" "observability_ingest_issuer" {
+  name  = "${local.ssm_prefix}/observability/ingest-issuer"
+  type  = "String"
+  value = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${module.cognito.user_pool_id}"
+}
+
+resource "aws_ssm_parameter" "observability_ingest_jwks_uri" {
+  name  = "${local.ssm_prefix}/observability/ingest-jwks-uri"
+  type  = "String"
+  value = "https://cognito-idp.${data.aws_region.current.region}.amazonaws.com/${module.cognito.user_pool_id}/.well-known/jwks.json"
+}

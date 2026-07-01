@@ -18,6 +18,10 @@ data "aws_iam_policy_document" "this" {
       "cognito-idp:DeleteGroup",
       "cognito-idp:GetGroup",
       "cognito-idp:UpdateGroup",
+      "cognito-idp:CreateResourceServer",
+      "cognito-idp:DeleteResourceServer",
+      "cognito-idp:DescribeResourceServer",
+      "cognito-idp:UpdateResourceServer",
       "cognito-idp:TagResource",
       "cognito-idp:UntagResource"
     ]

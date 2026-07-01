@@ -2,7 +2,10 @@ resource "aws_launch_template" "this" {
   name_prefix   = "${var.name}-"
   image_id      = data.aws_ssm_parameter.al2023_ami.value
   instance_type = var.instance_type
-  user_data     = base64encode(var.user_data)
+  # gzip-compress the user data: cloud-init on AL2023 auto-decompresses gzipped
+  # user data, and this keeps us well under EC2's hard 16 KiB user-data limit as
+  # the Alloy/telemetry config grows.
+  user_data = base64gzip(var.user_data)
 
   dynamic "iam_instance_profile" {
     for_each = var.iam_instance_profile == null ? [] : [var.iam_instance_profile]
