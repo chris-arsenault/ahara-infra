@@ -71,6 +71,7 @@ module "nat" {
       truenas_otlp_http_port       = local.truenas_otlp_http_port
       truenas_victoriametrics_port = local.truenas_victoriametrics_port
       otlp_gateway_enabled         = false
+      wg_textfile_dir              = ""
       file_logs = [
         {
           file_path = "/var/log/cloud-init-output.log"

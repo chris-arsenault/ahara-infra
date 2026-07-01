@@ -66,6 +66,10 @@ module "wireguard" {
       SECRET_ID           = aws_secretsmanager_secret.wg_keys.id
       WG_SERVER_IP        = cidrhost(local.wireguard_cidr, 1)
       VPC_DNS             = cidrhost(local.vpc_cidr, 2)
+      WG_TEXTFILE_DIR     = local.wg_textfile_dir
+      WG_METRICS_SCRIPT = templatefile("${path.module}/templates/wg_metrics_textfile.sh.tpl", {
+        TEXTFILE_DIR = local.wg_textfile_dir
+      })
     })
     HARDENING_SCRIPT        = local.hardening_script
     VECTOR_SERVICE_UNIT     = local.vector_service_unit
@@ -122,6 +126,7 @@ module "wireguard" {
       truenas_otlp_http_port       = local.truenas_otlp_http_port
       truenas_victoriametrics_port = local.truenas_victoriametrics_port
       otlp_gateway_enabled         = false
+      wg_textfile_dir              = local.wg_textfile_dir
       file_logs = [
         {
           file_path = "/var/log/cloud-init-output.log"

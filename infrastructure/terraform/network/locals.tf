@@ -40,11 +40,14 @@ locals {
       max_body_size = "5m"
     }
   }
-  truenas_observability_host      = "192.168.66.3"
-  truenas_loki_port               = 3100
-  truenas_otlp_grpc_port          = 4317
-  truenas_otlp_http_port          = 4318
-  truenas_victoriametrics_port    = 8428
+  truenas_observability_host   = "192.168.66.3"
+  truenas_loki_port            = 3100
+  truenas_otlp_grpc_port       = 4317
+  truenas_otlp_http_port       = 4318
+  truenas_victoriametrics_port = 8428
+  # Where the WireGuard host writes its wg-metrics-textfile.sh output; read by
+  # Alloy's prometheus.exporter.unix textfile block on that host only.
+  wg_textfile_dir                 = "/var/lib/alloy/textfile"
   azs                             = slice(data.aws_availability_zones.available.names, 0, 2)
   az                              = local.azs[0]
   az_secondary                    = local.azs[1]

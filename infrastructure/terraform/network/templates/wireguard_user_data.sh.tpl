@@ -158,4 +158,42 @@ EOF
 systemctl daemon-reload
 systemctl enable --now wg-healthcheck.service
 
+# WireGuard tunnel-health metrics (peer handshake age, tunnel up/down,
+# tx/rx bytes) for Alloy's prometheus.exporter.unix textfile collector. The
+# script body is pre-rendered by wg_metrics_textfile.sh.tpl at the Terraform
+# layer (same nesting pattern as ALLOY_CONFIG); the single-quoted heredoc here
+# only controls the shell that WRITES the file, so the script's own bash
+# variables are preserved literally.
+mkdir -p "${WG_TEXTFILE_DIR}"
+cat >/usr/local/bin/wg-metrics-textfile.sh <<'EOF'
+${WG_METRICS_SCRIPT}
+EOF
+chmod 755 /usr/local/bin/wg-metrics-textfile.sh
+
+cat >/etc/systemd/system/wg-metrics.service <<'EOF'
+[Unit]
+Description=WireGuard tunnel-health textfile metrics
+After=wg-quick@wg0.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/wg-metrics-textfile.sh
+EOF
+
+cat >/etc/systemd/system/wg-metrics.timer <<'EOF'
+[Unit]
+Description=Run wg-metrics.service every 30s
+
+[Timer]
+OnBootSec=10s
+OnUnitActiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now wg-metrics.timer
+
 wg show
