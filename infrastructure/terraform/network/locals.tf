@@ -39,10 +39,10 @@ locals {
       auth          = "passthrough"
       max_body_size = "5m"
     }
-    "airwave.services.ahara.io" = {
+    "api.airwave.ahara.io" = {
       address   = "192.168.66.3"
-      port      = 7880
-      auth      = "cognito"
+      port      = 7882
+      auth      = "internal"
       buffering = "off"
     }
   }
@@ -61,11 +61,15 @@ locals {
   # (CHDIR/Permission denied, crash-loops until systemd gives up). Using an
   # independent path this script fully owns avoids depending on the alloy
   # package's internal directory layout entirely.
-  wg_textfile_dir                 = "/var/lib/wg-metrics/textfile"
-  azs                             = slice(data.aws_availability_zones.available.names, 0, 2)
-  az                              = local.azs[0]
-  az_secondary                    = local.azs[1]
-  reverse_proxy_hostnames         = sort(keys(local.reverse_proxy_routes))
+  wg_textfile_dir = "/var/lib/wg-metrics/textfile"
+  azs             = slice(data.aws_availability_zones.available.names, 0, 2)
+  az              = local.azs[0]
+  az_secondary    = local.azs[1]
+  # Hosts with auth = "internal" are nginx upstreams only. Their ALB
+  # listener/cert/DNS is owned by project Terraform (e.g. alb-api-truenas), but
+  # they still use this route map for reverse-proxy config and scoped SG ingress.
+  reverse_proxy_internal_hosts    = sort([for h, r in local.reverse_proxy_routes : h if try(r.auth, "") == "internal"])
+  reverse_proxy_hostnames         = sort([for h, r in local.reverse_proxy_routes : h if !contains(["internal"], try(r.auth, ""))])
   reverse_proxy_cognito_hosts     = [for h, r in local.reverse_proxy_routes : h if r.auth == "cognito"]
   reverse_proxy_passthrough_hosts = [for h, r in local.reverse_proxy_routes : h if r.auth == "passthrough"]
   reverse_proxy_primary_hostname  = local.reverse_proxy_hostnames[0]

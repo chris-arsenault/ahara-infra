@@ -11,8 +11,10 @@ module "project_airwave" {
 
   prefix           = "airwave"
   state_key_prefix = "projects/airwave"
+  module_bundles   = ["website", "cognito-app"]
   policy_modules = [
     "terraform-state",
+    "alb-target-group",
     "komodo-deploy",
     "fdroid-publish",
   ]
