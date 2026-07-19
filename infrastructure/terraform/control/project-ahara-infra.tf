@@ -53,6 +53,8 @@ module "ahara_infra_project" {
     "db-migrate",
     "alb-loadbalancer",
     "alb-target-group",
+    "cloudfront-distribution",
+    "s3-private-storage",
     "wafv2",
     "acm-dns",
     "secrets-manager",

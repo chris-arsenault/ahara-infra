@@ -53,6 +53,12 @@ module "s3-website" {
   account_id = var.account_id
 }
 
+module "fdroid-publish" {
+  source     = "../policy-library/fdroid-publish"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 module "cloudfront-distribution" {
   source     = "../policy-library/cloudfront-distribution"
   prefix     = var.prefix
@@ -229,6 +235,7 @@ locals {
     "dynamodb"                    = module.dynamodb.policy_json
     "bedrock-inference"           = module.bedrock-inference.policy_json
     "s3-website"                  = module.s3-website.policy_json
+    "fdroid-publish"              = module.fdroid-publish.policy_json
     "cloudfront-distribution"     = module.cloudfront-distribution.policy_json
     "cloudwatch-rum"              = module.cloudwatch-rum.policy_json
     "acm-dns"                     = module.acm-dns.policy_json

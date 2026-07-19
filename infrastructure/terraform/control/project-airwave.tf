@@ -14,5 +14,6 @@ module "project_airwave" {
   policy_modules = [
     "terraform-state",
     "komodo-deploy",
+    "fdroid-publish",
   ]
 }
