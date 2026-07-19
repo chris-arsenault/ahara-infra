@@ -44,6 +44,14 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_set_header Connection "";
+%{ if try(route.buffering, "") == "off" ~}
+    # Streaming/SSE-friendly: forward events immediately and hold the
+    # long-lived upstream connection open.
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+%{ endif ~}
   }
 
   access_log /var/log/nginx/${host}_access.log;

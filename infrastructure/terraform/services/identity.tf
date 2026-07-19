@@ -56,11 +56,13 @@ resource "aws_cognito_user_pool_client" "alb" {
   supported_identity_providers         = ["COGNITO"]
 
   callback_urls = [
-    "https://dashboards.${local.services_domain}/oauth2/idpresponse"
+    "https://dashboards.${local.services_domain}/oauth2/idpresponse",
+    "https://airwave.${local.services_domain}/oauth2/idpresponse"
   ]
 
   logout_urls = [
-    "https://dashboards.${local.services_domain}/logout"
+    "https://dashboards.${local.services_domain}/logout",
+    "https://airwave.${local.services_domain}/logout"
   ]
 }
 

@@ -39,6 +39,12 @@ locals {
       auth          = "passthrough"
       max_body_size = "5m"
     }
+    "airwave.services.ahara.io" = {
+      address   = "192.168.66.3"
+      port      = 7880
+      auth      = "cognito"
+      buffering = "off"
+    }
   }
   truenas_observability_host   = "192.168.66.3"
   truenas_loki_port            = 3100
