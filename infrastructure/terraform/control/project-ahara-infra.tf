@@ -55,6 +55,7 @@ module "ahara_infra_project" {
     "alb-target-group",
     "cloudfront-distribution",
     "s3-private-storage",
+    "s3-website",
     "wafv2",
     "acm-dns",
     "secrets-manager",
