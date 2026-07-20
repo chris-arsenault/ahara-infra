@@ -27,6 +27,16 @@ done
 rm -f /etc/nginx/conf.d/default.conf
 
 cat >/etc/nginx/conf.d/reverse-proxy.conf <<'EOF'
+map $http_upgrade $proxy_connection_upgrade {
+  default upgrade;
+  ''      close;
+}
+
+map $http_x_forwarded_proto $proxy_forwarded_proto {
+  default $http_x_forwarded_proto;
+  ''      $scheme;
+}
+
 %{ for host, route in ROUTES ~}
 server {
   listen 80;
@@ -42,8 +52,13 @@ server {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Proto $proxy_forwarded_proto;
+%{ if try(route.websocket, false) ~}
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $proxy_connection_upgrade;
+%{ else ~}
     proxy_set_header Connection "";
+%{ endif ~}
 %{ if try(route.buffering, "") == "off" ~}
     # Streaming/SSE-friendly: forward events immediately and hold the
     # long-lived upstream connection open.

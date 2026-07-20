@@ -45,6 +45,13 @@ locals {
       auth      = "internal"
       buffering = "off"
     }
+    "sulion.services.ahara.io" = {
+      address   = "192.168.66.3"
+      port      = 30080
+      auth      = "internal"
+      buffering = "off"
+      websocket = true
+    }
   }
   truenas_observability_host   = "192.168.66.3"
   truenas_loki_port            = 3100

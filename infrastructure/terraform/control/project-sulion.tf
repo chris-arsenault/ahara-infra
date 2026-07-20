@@ -12,7 +12,7 @@ module "project_sulion" {
   prefix           = "sulion"
   state_key_prefix = "projects/sulion"
 
-  module_bundles = ["cognito-app"]
+  module_bundles = ["alb-api-truenas", "cognito-app"]
 
   policy_modules = [
     "terraform-state",

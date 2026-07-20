@@ -31,7 +31,7 @@ variable "policy_modules" {
 }
 
 variable "module_bundles" {
-  description = "ahara-tf-patterns modules this project uses. Auto-expands to the set of policy primitives each module needs. Valid values: 'website', 'alb-api', 'cognito-app', 'lambda'."
+  description = "ahara-tf-patterns modules this project uses. Auto-expands to the set of policy primitives each module needs. Valid values: 'website', 'alb-api', 'alb-api-truenas', 'cognito-app', 'lambda'."
   type        = set(string)
   default     = []
 }

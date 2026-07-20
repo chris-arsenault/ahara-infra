@@ -26,6 +26,11 @@ locals {
       "iam-roles",
     ])
 
+    "alb-api-truenas" = toset([
+      "alb-target-group",
+      "acm-dns",
+    ])
+
     "cognito-app" = toset([
       "cognito-client",
     ])
