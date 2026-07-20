@@ -134,20 +134,37 @@ resource "aws_wafv2_web_acl" "alb" {
         name        = "AWSManagedRulesAnonymousIpList"
 
         # Personal mobile clients can legitimately appear on carrier/VPN egress
-        # ranges that AWS classifies as anonymous. Linkdrop API routes are still
+        # ranges that AWS classifies as anonymous. These API hosts are still
         # protected by ALB JWT validation and the remaining WAF rules.
         scope_down_statement {
           not_statement {
             statement {
-              byte_match_statement {
-                positional_constraint = "EXACTLY"
-                search_string         = "api.linkdrop.ahara.io"
-                field_to_match {
-                  single_header { name = "host" }
+              or_statement {
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "api.linkdrop.ahara.io"
+                    field_to_match {
+                      single_header { name = "host" }
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
                 }
-                text_transformation {
-                  priority = 0
-                  type     = "LOWERCASE"
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "api.airwave.ahara.io"
+                    field_to_match {
+                      single_header { name = "host" }
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
                 }
               }
             }
