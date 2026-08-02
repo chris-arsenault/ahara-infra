@@ -5,42 +5,46 @@ locals {
   truenas_roles_anywhere_cert_validity_days = 90
 }
 
-resource "aws_acmpca_certificate_authority" "truenas_workloads" {
-  type                            = "ROOT"
-  permanent_deletion_time_in_days = 7
-
-  certificate_authority_configuration {
-    key_algorithm     = "RSA_4096"
-    signing_algorithm = "SHA512WITHRSA"
-
-    subject {
-      common_name         = "ahara-truenas-workloads"
-      organization        = "Ahara"
-      organizational_unit = "TrueNAS"
-    }
-  }
-
-  tags = {
-    Name = "ahara-truenas-workloads"
-  }
+# Self-managed CA. The previous design used AWS Private CA, which carries a
+# ~$400/month fixed charge; Roles Anywhere itself is free and accepts any
+# X.509 root via a CERTIFICATE_BUNDLE trust anchor. The CA private key lives
+# in Terraform state and an SSM SecureString — weaker custody than an HSM,
+# accepted trade-off for this account. The enrollment Lambda signs workload
+# CSRs with this key.
+resource "tls_private_key" "truenas_workloads_ca" {
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P384"
 }
 
-resource "aws_acmpca_certificate" "truenas_workloads_ca" {
-  certificate_authority_arn   = aws_acmpca_certificate_authority.truenas_workloads.arn
-  certificate_signing_request = aws_acmpca_certificate_authority.truenas_workloads.certificate_signing_request
-  signing_algorithm           = "SHA512WITHRSA"
-  template_arn                = "arn:${data.aws_partition.current.partition}:acm-pca:::template/RootCACertificate/V1"
+resource "tls_self_signed_cert" "truenas_workloads_ca" {
+  private_key_pem = tls_private_key.truenas_workloads_ca.private_key_pem
 
-  validity {
-    type  = "YEARS"
-    value = 10
+  subject {
+    common_name         = "ahara-truenas-workloads"
+    organization        = "Ahara"
+    organizational_unit = "TrueNAS"
   }
+
+  is_ca_certificate     = true
+  validity_period_hours = 87600 # 10 years
+
+  allowed_uses = [
+    "cert_signing",
+    "crl_signing",
+    "digital_signature",
+  ]
 }
 
-resource "aws_acmpca_certificate_authority_certificate" "truenas_workloads" {
-  certificate_authority_arn = aws_acmpca_certificate_authority.truenas_workloads.arn
-  certificate               = aws_acmpca_certificate.truenas_workloads_ca.certificate
-  certificate_chain         = aws_acmpca_certificate.truenas_workloads_ca.certificate_chain
+resource "aws_ssm_parameter" "truenas_roles_anywhere_ca_key" {
+  name  = "${local.truenas_roles_anywhere_prefix}/ca-key"
+  type  = "SecureString"
+  value = tls_private_key.truenas_workloads_ca.private_key_pem_pkcs8
+}
+
+resource "aws_ssm_parameter" "truenas_roles_anywhere_ca_cert" {
+  name  = "${local.truenas_roles_anywhere_prefix}/ca-cert"
+  type  = "String"
+  value = tls_self_signed_cert.truenas_workloads_ca.cert_pem
 }
 
 resource "aws_rolesanywhere_trust_anchor" "truenas_workloads" {
@@ -48,17 +52,15 @@ resource "aws_rolesanywhere_trust_anchor" "truenas_workloads" {
   enabled = true
 
   source {
-    source_type = "AWS_ACM_PCA"
+    source_type = "CERTIFICATE_BUNDLE"
     source_data {
-      acm_pca_arn = aws_acmpca_certificate_authority.truenas_workloads.arn
+      x509_certificate_data = tls_self_signed_cert.truenas_workloads_ca.cert_pem
     }
   }
 
   tags = {
     Name = "ahara-truenas-workloads"
   }
-
-  depends_on = [aws_acmpca_certificate_authority_certificate.truenas_workloads]
 }
 
 data "aws_iam_policy_document" "truenas_roles_anywhere_entry_assume" {
@@ -174,15 +176,14 @@ resource "aws_iam_role_policy" "truenas_roles_anywhere_enroll" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "IssueWorkloadCertificates"
+        Sid    = "ReadCaMaterial"
         Effect = "Allow"
         Action = [
-          "acm-pca:IssueCertificate",
-          "acm-pca:GetCertificate"
+          "ssm:GetParameter"
         ]
         Resource = [
-          aws_acmpca_certificate_authority.truenas_workloads.arn,
-          "${aws_acmpca_certificate_authority.truenas_workloads.arn}/certificate/*"
+          "arn:${data.aws_partition.current.partition}:ssm:*:${local.account_id}:parameter/ahara/truenas-roles-anywhere/ca-key",
+          "arn:${data.aws_partition.current.partition}:ssm:*:${local.account_id}:parameter/ahara/truenas-roles-anywhere/ca-cert"
         ]
       },
       {
@@ -224,8 +225,8 @@ resource "aws_lambda_function" "truenas_roles_anywhere_enroll" {
 
   environment {
     variables = {
-      AWS_PARTITION      = data.aws_partition.current.partition
-      CA_ARN             = aws_acmpca_certificate_authority.truenas_workloads.arn
+      CA_CERT_PARAM      = aws_ssm_parameter.truenas_roles_anywhere_ca_cert.name
+      CA_KEY_PARAM       = aws_ssm_parameter.truenas_roles_anywhere_ca_key.name
       CERT_VALIDITY_DAYS = tostring(local.truenas_roles_anywhere_cert_validity_days)
       ENTRY_ROLE_ARN     = aws_iam_role.truenas_roles_anywhere_entry.arn
       PROFILE_ARN        = aws_rolesanywhere_profile.truenas_workloads.arn
@@ -245,12 +246,6 @@ resource "aws_lambda_permission" "truenas_roles_anywhere_enroll_url" {
   function_name          = aws_lambda_function.truenas_roles_anywhere_enroll.function_name
   principal              = "*"
   function_url_auth_type = "NONE"
-}
-
-resource "aws_ssm_parameter" "truenas_roles_anywhere_ca_arn" {
-  name  = "${local.truenas_roles_anywhere_prefix}/ca-arn"
-  type  = "String"
-  value = aws_acmpca_certificate_authority.truenas_workloads.arn
 }
 
 resource "aws_ssm_parameter" "truenas_roles_anywhere_trust_anchor_arn" {

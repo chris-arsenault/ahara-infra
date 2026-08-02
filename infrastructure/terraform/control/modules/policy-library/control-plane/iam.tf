@@ -133,25 +133,4 @@ data "aws_iam_policy_document" "this" {
     }
   }
 
-  statement {
-    sid    = "ManagePrivateCA"
-    effect = "Allow"
-    actions = [
-      "acm-pca:CreateCertificateAuthority",
-      "acm-pca:DeleteCertificateAuthority",
-      "acm-pca:RestoreCertificateAuthority",
-      "acm-pca:UpdateCertificateAuthority",
-      "acm-pca:DescribeCertificateAuthority",
-      "acm-pca:GetCertificateAuthorityCertificate",
-      "acm-pca:GetCertificateAuthorityCsr",
-      "acm-pca:ImportCertificateAuthorityCertificate",
-      "acm-pca:IssueCertificate",
-      "acm-pca:GetCertificate",
-      "acm-pca:ListCertificateAuthorities",
-      "acm-pca:ListTags",
-      "acm-pca:TagCertificateAuthority",
-      "acm-pca:UntagCertificateAuthority",
-    ]
-    resources = ["*"]
-  }
 }

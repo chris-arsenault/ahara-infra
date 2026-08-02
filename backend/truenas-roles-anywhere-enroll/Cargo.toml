@@ -9,11 +9,15 @@ path = "src/main.rs"
 
 [dependencies]
 aws-config.workspace = true
-aws-sdk-acmpca.workspace = true
 aws-sdk-ssm.workspace = true
 lambda_http.workspace = true
+rcgen.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+time.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+x509-parser = { version = "0.17", features = ["verify"] }

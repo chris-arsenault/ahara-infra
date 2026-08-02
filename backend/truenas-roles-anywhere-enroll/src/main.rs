@@ -1,47 +1,44 @@
 use std::env;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use aws_config::BehaviorVersion;
-use aws_sdk_acmpca::primitives::Blob;
-use aws_sdk_acmpca::types::{
-    ApiPassthrough, Asn1Subject, ExtendedKeyUsage, ExtendedKeyUsageType, Extensions, GeneralName,
-    KeyUsage, SigningAlgorithm, Validity, ValidityPeriodType,
-};
-use aws_sdk_acmpca::Client as AcmPcaClient;
 use aws_sdk_ssm::Client as SsmClient;
 use lambda_http::{run, service_fn, Body, Error, Request, Response};
+use rcgen::string::Ia5String;
+use rcgen::{
+    CertificateSigningRequestParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa,
+    Issuer, KeyPair, KeyUsagePurpose, SanType,
+};
 use serde::{Deserialize, Serialize};
+use time::{Duration as TimeDuration, OffsetDateTime};
 use tracing::{error, info};
 
 #[derive(Clone)]
 struct AppState {
-    acmpca: AcmPcaClient,
     ssm: SsmClient,
     config: Config,
+    ca_cert_pem: String,
+    ca_key_pem: String,
 }
 
 #[derive(Clone)]
 struct Config {
-    ca_arn: String,
     cert_validity_days: i64,
     entry_role_arn: String,
     profile_arn: String,
     trust_anchor_arn: String,
-    partition: String,
 }
 
 impl Config {
     fn from_env() -> Result<Self, Error> {
         Ok(Self {
-            ca_arn: env::var("CA_ARN")?,
             cert_validity_days: env::var("CERT_VALIDITY_DAYS")
                 .unwrap_or_else(|_| "90".into())
                 .parse()?,
             entry_role_arn: env::var("ENTRY_ROLE_ARN")?,
             profile_arn: env::var("PROFILE_ARN")?,
             trust_anchor_arn: env::var("TRUST_ANCHOR_ARN")?,
-            partition: env::var("AWS_PARTITION").unwrap_or_else(|_| "aws".into()),
         })
     }
 }
@@ -61,7 +58,6 @@ struct StoredToken {
 
 #[derive(Serialize)]
 struct EnrollResponse {
-    certificate_arn: String,
     certificate_pem: String,
     certificate_chain_pem: String,
     workload_id: String,
@@ -158,93 +154,44 @@ async fn validate_token(
     Ok(path)
 }
 
-async fn issue_certificate(
-    acmpca: &AcmPcaClient,
-    config: &Config,
+/// Signs the workload CSR with the self-managed CA. Subject and extensions
+/// are set server-side from the validated workload_id; nothing requested in
+/// the CSR beyond its public key is honored. The URI SAN is what the entry
+/// role's tag-match condition keys on, so it must be exactly the workload_id.
+fn issue_certificate(
+    ca_cert_pem: &str,
+    ca_key_pem: &str,
+    cert_validity_days: i64,
     workload_id: &str,
     project: &str,
     name: &str,
     csr_pem: &str,
-) -> Result<(String, String, String), Error> {
-    let common_name = format!("{project}/{name}");
-    let common_name = common_name.chars().take(64).collect::<String>();
-    let template_arn = format!(
-        "arn:{}:acm-pca:::template/BlankEndEntityCertificate_APIPassthrough/V1",
-        config.partition
-    );
+) -> Result<String, Error> {
+    let ca_key = KeyPair::from_pem(ca_key_pem)?;
+    let issuer = Issuer::from_ca_cert_pem(ca_cert_pem, ca_key)?;
 
-    let issued = acmpca
-        .issue_certificate()
-        .certificate_authority_arn(&config.ca_arn)
-        .csr(Blob::new(csr_pem.as_bytes()))
-        .signing_algorithm(SigningAlgorithm::Sha256Withrsa)
-        .validity(
-            Validity::builder()
-                .r#type(ValidityPeriodType::Days)
-                .value(config.cert_validity_days)
-                .build()?,
-        )
-        .template_arn(template_arn)
-        .api_passthrough(
-            ApiPassthrough::builder()
-                .subject(
-                    Asn1Subject::builder()
-                        .common_name(common_name)
-                        .organization("Ahara")
-                        .organizational_unit("TrueNAS")
-                        .build(),
-                )
-                .extensions(
-                    Extensions::builder()
-                        .key_usage(KeyUsage::builder().digital_signature(true).build())
-                        .extended_key_usage(
-                            ExtendedKeyUsage::builder()
-                                .extended_key_usage_type(ExtendedKeyUsageType::ClientAuth)
-                                .build(),
-                        )
-                        .subject_alternative_names(
-                            GeneralName::builder()
-                                .uniform_resource_identifier(workload_id)
-                                .build(),
-                        )
-                        .build(),
-                )
-                .build(),
-        )
-        .send()
-        .await?;
+    let mut csr = CertificateSigningRequestParams::from_pem(csr_pem)?;
 
-    let certificate_arn = issued
-        .certificate_arn()
-        .ok_or("ACM PCA did not return certificate ARN")?
-        .to_string();
+    let common_name: String = format!("{project}/{name}").chars().take(64).collect();
+    let mut dn = DistinguishedName::new();
+    dn.push(DnType::CommonName, common_name);
+    dn.push(DnType::OrganizationName, "Ahara");
+    dn.push(DnType::OrganizationalUnitName, "TrueNAS");
+    csr.params.distinguished_name = dn;
 
-    let mut last_error = None;
-    for _ in 0..20 {
-        match acmpca
-            .get_certificate()
-            .certificate_authority_arn(&config.ca_arn)
-            .certificate_arn(&certificate_arn)
-            .send()
-            .await
-        {
-            Ok(cert) => {
-                let certificate = cert.certificate().unwrap_or_default().to_string();
-                let chain = cert.certificate_chain().unwrap_or_default().to_string();
-                return Ok((certificate_arn, certificate, chain));
-            }
-            Err(error) => {
-                last_error = Some(error.to_string());
-                tokio::time::sleep(Duration::from_secs(1)).await;
-            }
-        }
-    }
+    csr.params.is_ca = IsCa::ExplicitNoCa;
+    csr.params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+    csr.params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ClientAuth];
+    csr.params.subject_alt_names =
+        vec![SanType::URI(Ia5String::try_from(workload_id.to_string())?)];
+    csr.params.use_authority_key_identifier_extension = true;
 
-    Err(format!(
-        "certificate was not issued before timeout: {}",
-        last_error.unwrap_or_else(|| "unknown error".into())
-    )
-    .into())
+    let now = OffsetDateTime::now_utc();
+    csr.params.not_before = now - TimeDuration::minutes(5);
+    csr.params.not_after = now + TimeDuration::days(cert_validity_days);
+
+    let certificate = csr.signed_by(&issuer)?;
+    Ok(certificate.pem())
 }
 
 async fn enroll(request: EnrollRequest, state: &AppState) -> Result<EnrollResponse, Error> {
@@ -257,20 +204,19 @@ async fn enroll(request: EnrollRequest, state: &AppState) -> Result<EnrollRespon
         .name(token_path.as_str())
         .send()
         .await?;
-    let (certificate_arn, certificate_pem, certificate_chain_pem) = issue_certificate(
-        &state.acmpca,
-        &state.config,
+    let certificate_pem = issue_certificate(
+        &state.ca_cert_pem,
+        &state.ca_key_pem,
+        state.config.cert_validity_days,
         &request.workload_id,
         project,
         name,
         &request.csr_pem,
-    )
-    .await?;
+    )?;
 
     Ok(EnrollResponse {
-        certificate_arn,
         certificate_pem,
-        certificate_chain_pem,
+        certificate_chain_pem: state.ca_cert_pem.clone(),
         workload_id: request.workload_id,
         role_arn,
         trust_anchor_arn: state.config.trust_anchor_arn.clone(),
@@ -331,10 +277,18 @@ async fn main() -> Result<(), Error> {
         .init();
 
     let aws_config = aws_config::load_defaults(BehaviorVersion::latest()).await;
+    let ssm = SsmClient::new(&aws_config);
+
+    let ca_cert_param = env::var("CA_CERT_PARAM")?;
+    let ca_key_param = env::var("CA_KEY_PARAM")?;
+    let ca_cert_pem = get_parameter(&ssm, &ca_cert_param, false).await?;
+    let ca_key_pem = get_parameter(&ssm, &ca_key_param, true).await?;
+
     let state = Arc::new(AppState {
-        acmpca: AcmPcaClient::new(&aws_config),
-        ssm: SsmClient::new(&aws_config),
+        ssm,
         config: Config::from_env()?,
+        ca_cert_pem,
+        ca_key_pem,
     });
 
     run(service_fn(move |request| {
@@ -342,4 +296,69 @@ async fn main() -> Result<(), Error> {
         async move { handler(request, state).await }
     }))
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use x509_parser::prelude::{FromDer, GeneralName, X509Certificate};
+
+    const CA_KEY_PEM: &str = include_str!("../tests/fixtures/ca-key.pem");
+    const CA_CERT_PEM: &str = include_str!("../tests/fixtures/ca-cert.pem");
+    const WORKLOAD_CSR_PEM: &str = include_str!("../tests/fixtures/workload.csr");
+
+    #[test]
+    fn signs_rsa_csr_with_ec_ca() {
+        let workload_id = "spiffe://ahara/truenas/house-sensors/raw-archive";
+        let cert_pem = issue_certificate(
+            CA_CERT_PEM,
+            CA_KEY_PEM,
+            90,
+            workload_id,
+            "house-sensors",
+            "raw-archive",
+            WORKLOAD_CSR_PEM,
+        )
+        .expect("issuing a certificate from an RSA CSR must succeed");
+
+        let (_, cert_pem_block) =
+            x509_parser::pem::parse_x509_pem(cert_pem.as_bytes()).expect("issued cert must be PEM");
+        let (_, cert) =
+            X509Certificate::from_der(&cert_pem_block.contents).expect("issued cert must parse");
+
+        let (_, ca_pem_block) = x509_parser::pem::parse_x509_pem(CA_CERT_PEM.as_bytes()).unwrap();
+        let (_, ca) = X509Certificate::from_der(&ca_pem_block.contents).unwrap();
+        cert.verify_signature(Some(ca.public_key()))
+            .expect("issued cert must verify against the CA public key");
+
+        assert_eq!(cert.issuer(), ca.subject());
+        assert!(!cert.is_ca());
+
+        let san = cert
+            .subject_alternative_name()
+            .expect("SAN extension must parse")
+            .expect("SAN extension must be present");
+        assert_eq!(san.value.general_names, vec![GeneralName::URI(workload_id)]);
+
+        let eku = cert
+            .extended_key_usage()
+            .expect("EKU extension must parse")
+            .expect("EKU extension must be present");
+        assert!(eku.value.client_auth);
+
+        let ku = cert
+            .key_usage()
+            .expect("KU extension must parse")
+            .expect("KU extension must be present");
+        assert!(ku.value.digital_signature());
+    }
+
+    #[test]
+    fn rejects_malformed_workload_ids() {
+        assert!(parse_workload_id("spiffe://ahara/truenas/proj/name").is_ok());
+        assert!(parse_workload_id("spiffe://other/truenas/proj/name").is_err());
+        assert!(parse_workload_id("spiffe://ahara/truenas/proj").is_err());
+        assert!(parse_workload_id("spiffe://ahara/truenas/proj/name/extra").is_err());
+        assert!(parse_workload_id("spiffe://ahara/truenas/Proj/name").is_err());
+    }
 }
