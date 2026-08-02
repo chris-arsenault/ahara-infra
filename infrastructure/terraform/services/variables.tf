@@ -62,7 +62,7 @@ variable "ahara_lambda_sg_id" {
 }
 
 variable "vpn_client_sg_id" {
-  description = "VPN client security group id from the network module (opt-in for Lambdas that need TrueNAS/WireGuard access)"
+  description = "VPN client security group id from the network module (opt-in for Lambdas that need routed TrueNAS access)"
   type        = string
 }
 

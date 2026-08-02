@@ -42,7 +42,7 @@ infrastructure/terraform/
 ├── main.tf         # provider, backend, module calls
 ├── locals.tf       # prefix = "ahara"
 ├── control/        # IAM, OIDC, deployer roles, policy library
-├── network/        # VPC, subnets, ALB, WireGuard, NAT, SGs, Route53
+├── network/        # VPC, subnets, ALB, NAT, SGs, Route53, VPN routes
 └── services/       # Cognito, RDS, auth-trigger, db-migrate, CORS,
                     # CI-ingest, komodo-proxy, observability, OG server
 backend/            # Rust Lambda workspace (7 crates)
@@ -80,6 +80,10 @@ No circular dependencies. Cross-layer references use direct module outputs
 - `/ahara/og-server/*` — OG Lambda artifact location
 
 **Route53** — `ahara.io.` zone looked up by name (not SSM).
+
+**ahara-vpn route contract** — ahara-vpn exclusively owns the WireGuard
+endpoint, tunnel secrets, and `wg.ahara.io`. This stack owns only the VPC routes
+to the endpoint and resolves its pinned ENI by `eni:role = "wireguard"`.
 
 ## Deploy
 

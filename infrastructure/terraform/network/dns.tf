@@ -1,14 +1,6 @@
-resource "aws_route53_record" "wireguard" {
-  zone_id = local.route53_zone_id
-  name    = "wg.${local.root_domain_name}"
-  type    = "A"
-
-  alias {
-    name                   = aws_lb.wireguard.dns_name
-    zone_id                = aws_lb.wireguard.zone_id
-    evaluate_target_health = false
-  }
-}
+# wg.ahara.io is owned by the ahara-vpn stack (imported there during the
+# endpoint migration); it was state-rm'd from this state before this removal
+# applied so the destroy never touched the live record.
 
 # Note: the apex A record for ahara.io lives in services/dns.tf — Cognito's
 # custom domain needs to explicitly depend on it, which is only possible

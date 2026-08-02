@@ -9,8 +9,8 @@ logging {
 // host metrics below (enable_host_metrics) and/or the Lambda OTLP pipeline
 // below (otlp_gateway_enabled, reverse-proxy only). NOT declared at all for a
 // host with neither: e.g. NAT has no network route to the TrueNAS LAN (it's a
-// public-subnet egress instance; only the reverse proxy and WireGuard can
-// reach 192.168.66.0/24), so a remote_write there would retry forever and
+// public-subnet egress instance; only the reverse proxy can reach
+// 192.168.66.0/24), so a remote_write there would retry forever and
 // never succeed -- omit it entirely rather than starve it.
 prometheus.remote_write "victoriametrics" {
   endpoint {
@@ -28,19 +28,11 @@ prometheus.remote_write "victoriametrics" {
 
 %{ if enable_host_metrics ~}
 // Host health metrics (CPU/mem/disk/net) for this host, rendering on the
-// "Ahara Network Health" dashboard via the instance label. On the WireGuard
-// host, wg_textfile_dir also points this exporter at the WireGuard
-// tunnel-health textfile metrics (see wg_metrics_textfile.sh.tpl).
+// "Ahara Network Health" dashboard via the instance label.
 prometheus.exporter.unix "host" {
   include_exporter_metrics = false
 
   disable_collectors = ["mdadm", "nfs", "nfsd", "xfs", "zfs"]
-
-%{ if wg_textfile_dir != "" ~}
-  textfile {
-    directory = "${wg_textfile_dir}"
-  }
-%{ endif ~}
 }
 
 discovery.relabel "host" {

@@ -10,21 +10,19 @@ data "aws_route53_zone" "root" {
 }
 
 locals {
-  prefix                 = "ahara"
-  root_domain_name       = "ahara.io"
-  wireguard_port         = 51820
-  wireguard_cidr         = "10.200.0.0/24"
-  wireguard_cidr_host    = "10.200.0.1/24"
-  vpc_cidr               = "10.42.0.0/16"
-  public_subnet_cidr     = "10.42.10.0/24"
-  public_subnet_cidr_b   = "10.42.11.0/24"
-  private_subnet_cidr    = "10.42.20.0/24"
-  private_subnet_cidr_b  = "10.42.21.0/24"
-  allowed_cidrs          = ["0.0.0.0/0"]
-  allowed_ipv6_cidrs     = []
-  laptop_peer_public_key = ""
-  ssm_public_key_path    = "/${local.prefix}/server_public_key"
-  home_peer_address      = format("%s/32", cidrhost(local.wireguard_cidr, 2))
+  prefix           = "ahara"
+  root_domain_name = "ahara.io"
+  # The WireGuard endpoint moved to the ahara-vpn stack; these two CIDRs
+  # remain because the private route table still routes them via its ENI.
+  wireguard_cidr        = "10.200.0.0/24"
+  home_lan_cidr         = "192.168.66.0/24"
+  vpc_cidr              = "10.42.0.0/16"
+  public_subnet_cidr    = "10.42.10.0/24"
+  public_subnet_cidr_b  = "10.42.11.0/24"
+  private_subnet_cidr   = "10.42.20.0/24"
+  private_subnet_cidr_b = "10.42.21.0/24"
+  allowed_cidrs         = ["0.0.0.0/0"]
+  allowed_ipv6_cidrs    = []
   # Reverse proxy hostnames live under services.ahara.io (not the apex),
   # keeping the apex zone free for ahara-portal to own.
   reverse_proxy_routes = {
@@ -58,20 +56,9 @@ locals {
   truenas_otlp_grpc_port       = 4317
   truenas_otlp_http_port       = 4318
   truenas_victoriametrics_port = 8428
-  # Where the WireGuard host writes its wg-metrics-textfile.sh output; read by
-  # Alloy's prometheus.exporter.unix textfile block on that host only.
-  #
-  # Deliberately NOT under /var/lib/alloy: pre-creating a path there before the
-  # alloy RPM's own useradd step runs leaves /var/lib/alloy root-owned, and the
-  # postinstall skips fixing ownership on an already-existing home directory --
-  # the alloy user then fails to chdir into its own working directory at start
-  # (CHDIR/Permission denied, crash-loops until systemd gives up). Using an
-  # independent path this script fully owns avoids depending on the alloy
-  # package's internal directory layout entirely.
-  wg_textfile_dir = "/var/lib/wg-metrics/textfile"
-  azs             = slice(data.aws_availability_zones.available.names, 0, 2)
-  az              = local.azs[0]
-  az_secondary    = local.azs[1]
+  azs                          = slice(data.aws_availability_zones.available.names, 0, 2)
+  az                           = local.azs[0]
+  az_secondary                 = local.azs[1]
   # Hosts with auth = "internal" are nginx upstreams only. Their ALB
   # listener/cert/DNS is owned by project Terraform (e.g. alb-api-truenas), but
   # they still use this route map for reverse-proxy config and scoped SG ingress.

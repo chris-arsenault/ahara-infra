@@ -71,7 +71,6 @@ module "nat" {
       truenas_otlp_http_port       = local.truenas_otlp_http_port
       truenas_victoriametrics_port = local.truenas_victoriametrics_port
       otlp_gateway_enabled         = false
-      wg_textfile_dir              = ""
       # NAT is a public-subnet egress instance with no route to the TrueNAS
       # LAN (192.168.66.0/24) -- a remote_write here would retry forever and
       # never succeed. See the comment above prometheus.remote_write in

@@ -17,7 +17,7 @@ cd backend && cargo lambda build --release
 | Layer | Owns | Terraform path |
 |---|---|---|
 | control | OIDC provider, deployer IAM roles, policy library, per-project deployer modules | `infrastructure/terraform/control/` |
-| network | VPC, subnets, NAT, ALB, WireGuard, Route53, WAF, reverse proxy | `infrastructure/terraform/network/` |
+| network | VPC, subnets, NAT, ALB, Route53, WAF, reverse proxy, routes to the ahara-vpn endpoint | `infrastructure/terraform/network/` |
 | services | Cognito, RDS, 7 Rust Lambdas (auth-trigger, ci-ingest, cors-handler, db-migrate, db-migrate-truenas, komodo-proxy, og-server) | `infrastructure/terraform/services/` |
 
 All three layers share a single Terraform state (`ahara/infra.tfstate` in
@@ -29,6 +29,10 @@ Consumer projects depend on:
 - Tag-based network lookups (VPC, ALB, SGs) via `ahara-tf-patterns/modules/platform-context`
 - SSM under `/ahara/cognito/*`, `/ahara/rds/*`, `/ahara/db/<project>/*`
 - Route53 zone `ahara.io.`
+
+The separate `ahara-vpn` stack owns the WireGuard endpoint, tunnel identities,
+and `wg.ahara.io`. This stack owns the VPC routes to that endpoint and resolves
+its pinned ENI through the `eni:role = wireguard` tag.
 
 See [`ahara-tf-patterns`](https://github.com/chris-arsenault/ahara-tf-patterns) for the
 reusable module library that consuming projects use, and the `ahara` index

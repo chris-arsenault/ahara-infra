@@ -130,7 +130,7 @@ EOF
 }
 
 # Critical network/application setup must run before package-heavy hardening or
-# telemetry setup. NAT and WireGuard are single-instance network dependencies.
+# telemetry setup. NAT is a single-instance network dependency.
 ${EXTRA_SNIPPET}
 
 run_optional "bootstrap swap" ensure_bootstrap_swap

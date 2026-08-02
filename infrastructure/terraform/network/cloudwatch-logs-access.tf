@@ -8,10 +8,6 @@ locals {
       role_name     = aws_iam_role.reverse_proxy.name
       log_group_arn = aws_cloudwatch_log_group.reverse_proxy.arn
     }
-    wireguard = {
-      role_name     = aws_iam_role.wireguard.name
-      log_group_arn = aws_cloudwatch_log_group.wireguard.arn
-    }
   }
 }
 

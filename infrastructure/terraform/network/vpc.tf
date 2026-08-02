@@ -86,17 +86,27 @@ resource "aws_route_table_association" "public_b" {
   route_table_id = aws_route_table.public.id
 }
 
-# Route from PRIVATE subnet to WG clients via the EC2 instance
+# The WireGuard endpoint lives in the ahara-vpn stack; its instance pins an
+# ENI tagged eni:role=wireguard, looked up here so this state carries no
+# reference to the other stack's resources.
+data "aws_network_interface" "wireguard" {
+  filter {
+    name   = "tag:eni:role"
+    values = ["wireguard"]
+  }
+}
+
+# Routes from the PRIVATE subnet to the home LAN and tunnel via that ENI.
 resource "aws_route" "private_to_wg_via_lan" {
   route_table_id         = aws_route_table.private.id
   destination_cidr_block = local.home_lan_cidr
-  network_interface_id   = module.wireguard.primary_network_interface_id
+  network_interface_id   = data.aws_network_interface.wireguard.id
 }
 
 resource "aws_route" "private_to_wg_via_wg" {
   route_table_id         = aws_route_table.private.id
   destination_cidr_block = local.wireguard_cidr
-  network_interface_id   = module.wireguard.primary_network_interface_id
+  network_interface_id   = data.aws_network_interface.wireguard.id
 }
 
 resource "aws_route_table" "private" {

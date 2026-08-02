@@ -11,7 +11,7 @@ infrastructure/terraform/
 ├── main.tf         # provider, backend, module calls
 ├── locals.tf       # prefix = "ahara"
 ├── control/        # IAM, OIDC, deployer roles, policy library
-├── network/        # VPC, subnets, ALB, WireGuard, NAT, SGs, Route53
+├── network/        # VPC, subnets, ALB, NAT, SGs, Route53, VPN routes
 └── services/       # Cognito, RDS, auth-trigger, db-migrate, CORS,
                     # CI-ingest, komodo-proxy, observability, OG server
 backend/            # Rust Lambda workspace (7 crates)

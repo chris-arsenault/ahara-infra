@@ -3,11 +3,6 @@ resource "aws_cloudwatch_log_group" "reverse_proxy" {
   retention_in_days = 30
 }
 
-resource "aws_cloudwatch_log_group" "wireguard" {
-  name              = "/aws/${local.prefix}/wireguard"
-  retention_in_days = 30
-}
-
 resource "aws_cloudwatch_log_group" "nat" {
   name              = "/aws/${local.prefix}/nat"
   retention_in_days = 30
