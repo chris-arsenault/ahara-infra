@@ -38,4 +38,11 @@ module "project_ahara_vpn" {
   ssm_additional_parameter_paths = [
     "ahara/vpn/*",
   ]
+
+  # These secrets were imported into the ahara-vpn state under their existing
+  # names so rotating endpoint ownership could not discard either key.
+  secrets_manager_additional_secret_arns = [
+    "arn:aws:secretsmanager:*:${local.account_id}:secret:ahara-wg-keys-*",
+    "arn:aws:secretsmanager:*:${local.account_id}:secret:ahara-network-peer-config-*",
+  ]
 }

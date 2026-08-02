@@ -30,6 +30,12 @@ variable "policy_modules" {
   default     = []
 }
 
+variable "secrets_manager_additional_secret_arns" {
+  description = "Additional Secrets Manager ARNs owned by this project but outside its standard prefix"
+  type        = list(string)
+  default     = []
+}
+
 variable "module_bundles" {
   description = "ahara-tf-patterns modules this project uses. Auto-expands to the set of policy primitives each module needs. Valid values: 'website', 'alb-api', 'alb-api-truenas', 'cognito-app', 'lambda'."
   type        = set(string)

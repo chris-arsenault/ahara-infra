@@ -12,6 +12,9 @@ data "aws_iam_policy_document" "this" {
       "secretsmanager:PutResourcePolicy",
       "secretsmanager:TagResource"
     ]
-    resources = ["arn:aws:secretsmanager:*:${var.account_id}:secret:${var.prefix}-*"]
+    resources = concat(
+      ["arn:aws:secretsmanager:*:${var.account_id}:secret:${var.prefix}-*"],
+      var.additional_secret_arns,
+    )
   }
 }

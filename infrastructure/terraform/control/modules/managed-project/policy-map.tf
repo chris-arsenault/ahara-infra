@@ -158,9 +158,10 @@ module "ssm-write" {
 }
 
 module "secrets-manager" {
-  source     = "../policy-library/secrets-manager"
-  prefix     = var.prefix
-  account_id = var.account_id
+  source                 = "../policy-library/secrets-manager"
+  prefix                 = var.prefix
+  account_id             = var.account_id
+  additional_secret_arns = var.secrets_manager_additional_secret_arns
 }
 
 module "kms-admin" {
