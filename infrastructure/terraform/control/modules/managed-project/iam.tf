@@ -1,13 +1,23 @@
 locals {
 
   allowed_repos = [for r in var.allowed_repos : "chris-arsenault/${r}"]
-  branch_subs = flatten([
+  # GitHub issues two OIDC subject formats: classic (repo:OWNER/REPO:...) for
+  # older repos and immutable-ID (repo:OWNER@id/REPO@id:...) for repos created
+  # after the 2026 rollout. Trust both: "@" is not a legal character in owner
+  # or repo names, so the wildcarded @-forms cannot match a different repo.
+  repo_sub_patterns = flatten([
     for r in local.allowed_repos : [
+      r,
+      "${replace(r, "/", "@*/")}@*",
+    ]
+  ])
+  branch_subs = flatten([
+    for r in local.repo_sub_patterns : [
       for b in var.allowed_branches : "repo:${r}:ref:refs/heads/${b}"
     ]
   ])
   pull_request_subs = flatten([
-    for r in local.allowed_repos : var.allow_pull_request ? ["repo:${r}:pull_request"] : []
+    for r in local.repo_sub_patterns : var.allow_pull_request ? ["repo:${r}:pull_request"] : []
   ])
   # Build allowed 'sub' claims for refs, envs, and optionally PR runs:
   # - repo:OWNER/REPO:ref:refs/heads/<branch>
