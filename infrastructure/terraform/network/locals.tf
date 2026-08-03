@@ -68,10 +68,18 @@ locals {
   reverse_proxy_passthrough_hosts = [for h, r in local.reverse_proxy_routes : h if r.auth == "passthrough"]
   reverse_proxy_primary_hostname  = local.reverse_proxy_hostnames[0]
   reverse_proxy_sans              = [for host in local.reverse_proxy_hostnames : host if host != local.reverse_proxy_primary_hostname]
-  route53_zone_id                 = data.aws_route53_zone.root.zone_id
-  hardening_dnf_config            = templatefile("${path.module}/templates/dnf_automatic.conf.tpl", {})
-  hardening_sysctl_config         = templatefile("${path.module}/templates/sysctl_hardening.conf.tpl", {})
-  hardening_aide_config           = templatefile("${path.module}/templates/aide_amazon_linux.conf.tpl", {})
+  # AWSManagedRulesAnonymousIpList blocks VPN, proxy, and hosting-provider
+  # egress categorically. Apply it only to explicitly selected services; all
+  # other ALB hosts retain the global IP reputation, common-rule, and rate-limit
+  # protections configured in waf.tf.
+  waf_anonymous_ip_protected_hosts = toset([
+    "dashboards.services.ahara.io",
+    "sonar.services.ahara.io",
+  ])
+  route53_zone_id         = data.aws_route53_zone.root.zone_id
+  hardening_dnf_config    = templatefile("${path.module}/templates/dnf_automatic.conf.tpl", {})
+  hardening_sysctl_config = templatefile("${path.module}/templates/sysctl_hardening.conf.tpl", {})
+  hardening_aide_config   = templatefile("${path.module}/templates/aide_amazon_linux.conf.tpl", {})
   hardening_script = templatefile("${path.module}/templates/apply_system_hardening.sh.tpl", {
     DNF_AUTOMATIC_CONF     = local.hardening_dnf_config
     SYSCTL_HARDENING_CONF  = local.hardening_sysctl_config
