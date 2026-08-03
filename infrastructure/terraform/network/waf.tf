@@ -1,21 +1,3 @@
-resource "aws_wafv2_regex_pattern_set" "anonymous_ip_protected_hosts" {
-  name        = "${local.prefix}-anonymous-ip-protected-hosts"
-  description = "ALB hostnames that opt in to AWS anonymous IP blocking."
-  scope       = "REGIONAL"
-
-  dynamic "regular_expression" {
-    for_each = local.waf_anonymous_ip_protected_hosts
-
-    content {
-      regex_string = "^${replace(regular_expression.value, ".", "[.]")}$"
-    }
-  }
-
-  tags = {
-    Name = "${local.prefix}-anonymous-ip-protected-hosts"
-  }
-}
-
 resource "aws_wafv2_web_acl" "alb" {
   name        = "${local.prefix}-alb-waf"
   description = "WAF protecting the reverse proxy ALB."
@@ -139,143 +121,8 @@ resource "aws_wafv2_web_acl" "alb" {
   }
 
   rule {
-    name     = "AWS-AWSManagedRulesAnonymousIpList"
-    priority = 3
-
-    override_action {
-      none {}
-    }
-
-    statement {
-      managed_rule_group_statement {
-        vendor_name = "AWS"
-        name        = "AWSManagedRulesAnonymousIpList"
-
-        rule_action_override {
-          name = "AnonymousIPList"
-          action_to_use {
-            count {}
-          }
-        }
-
-        rule_action_override {
-          name = "HostingProviderIPList"
-          action_to_use {
-            count {}
-          }
-        }
-
-        # VPN/proxy blocking is opt-in by exact hostname. Mobile clients and
-        # service integrations frequently use egress ranges that AWS classifies
-        # as anonymous, so new ALB hosts must not inherit this rule implicitly.
-        scope_down_statement {
-          regex_pattern_set_reference_statement {
-            arn = aws_wafv2_regex_pattern_set.anonymous_ip_protected_hosts.arn
-
-            field_to_match {
-              single_header { name = "host" }
-            }
-
-            text_transformation {
-              priority = 0
-              type     = "LOWERCASE"
-            }
-          }
-        }
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "${local.prefix}-anonymous-ip"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  # The managed group above counts and labels anonymous IP matches so this rule
-  # can preserve the protection while making a host-and-path-specific exception.
-  rule {
-    name     = "AnonymousIpListEnforcement"
-    priority = 4
-
-    action {
-      block {}
-    }
-
-    statement {
-      and_statement {
-        statement {
-          label_match_statement {
-            scope = "NAMESPACE"
-            key   = "awswaf:managed:aws:anonymous-ip-list:"
-          }
-        }
-
-        statement {
-          regex_pattern_set_reference_statement {
-            arn = aws_wafv2_regex_pattern_set.anonymous_ip_protected_hosts.arn
-
-            field_to_match {
-              single_header { name = "host" }
-            }
-
-            text_transformation {
-              priority = 0
-              type     = "LOWERCASE"
-            }
-          }
-        }
-
-        # Hosted CI runners are commonly classified as anonymous IPs. Keep the
-        # SonarQube UI protected while allowing its token-secured scanner API
-        # and batch runtime through this categorical IP rule.
-        statement {
-          not_statement {
-            statement {
-              and_statement {
-                statement {
-                  byte_match_statement {
-                    positional_constraint = "EXACTLY"
-                    search_string         = "sonar.services.ahara.io"
-                    field_to_match {
-                      single_header { name = "host" }
-                    }
-                    text_transformation {
-                      priority = 0
-                      type     = "LOWERCASE"
-                    }
-                  }
-                }
-
-                statement {
-                  regex_match_statement {
-                    regex_string = "^/(api|batch)/"
-                    field_to_match {
-                      uri_path {}
-                    }
-                    text_transformation {
-                      priority = 0
-                      type     = "NONE"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "${local.prefix}-anonymous-ip-enforcement"
-      sampled_requests_enabled   = true
-    }
-  }
-
-  rule {
     name     = "RateLimitByIp"
-    priority = 5
+    priority = 3
 
     action {
       block {}
@@ -300,7 +147,7 @@ resource "aws_wafv2_web_acl" "alb" {
   # the broader shared-ALB rate limit; token polling remains unaffected.
   rule {
     name     = "SulionPairingStartRateLimit"
-    priority = 6
+    priority = 4
 
     action {
       block {}
