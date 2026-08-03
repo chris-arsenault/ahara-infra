@@ -17,6 +17,7 @@ module "project_sulion" {
   policy_modules = [
     "terraform-state",
     "komodo-deploy",
+    "secrets-manager",
     "ssm-write",
   ]
 
