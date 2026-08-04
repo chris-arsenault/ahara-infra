@@ -11,6 +11,8 @@ data "aws_iam_policy_document" "this" {
       "s3:GetBucketPolicyStatus",
       "s3:PutBucketPolicy",
       "s3:DeleteBucketPolicy",
+      "s3:GetBucketOwnershipControls",
+      "s3:PutBucketOwnershipControls",
     ]
     resources = ["arn:aws:s3:::${var.prefix}-*"]
   }
