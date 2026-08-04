@@ -24,6 +24,7 @@ module "project_ahara_vpn" {
 
   policy_modules = [
     "terraform-state",
+    "grafana-dashboard-deploy",
     "ec2-vpc-compute",
     "ec2-security-groups",
     "iam-roles",
