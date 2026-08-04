@@ -36,17 +36,22 @@ data "aws_iam_policy_document" "this" {
     }
   }
 
-  # PutBackupPolicy creates the AWS Backup service-linked role on first use
-  # in the account.
+  # PutBackupPolicy creates the EFS and AWS Backup service-linked roles on
+  # first use in the account.
   statement {
-    sid       = "BackupServiceLinkedRole"
-    effect    = "Allow"
-    actions   = ["iam:CreateServiceLinkedRole"]
-    resources = ["arn:aws:iam::${var.account_id}:role/aws-service-role/backup.amazonaws.com/*"]
+    sid    = "EfsServiceLinkedRoles"
+    effect = "Allow"
+    actions = [
+      "iam:CreateServiceLinkedRole",
+    ]
+    resources = [
+      "arn:aws:iam::${var.account_id}:role/aws-service-role/backup.amazonaws.com/*",
+      "arn:aws:iam::${var.account_id}:role/aws-service-role/elasticfilesystem.amazonaws.com/*",
+    ]
     condition {
       test     = "StringEquals"
       variable = "iam:AWSServiceName"
-      values   = ["backup.amazonaws.com"]
+      values   = ["backup.amazonaws.com", "elasticfilesystem.amazonaws.com"]
     }
   }
 
