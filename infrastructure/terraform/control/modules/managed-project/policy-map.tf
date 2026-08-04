@@ -144,6 +144,18 @@ module "s3_private_storage" {
   account_id = var.account_id
 }
 
+module "s3_bucket_policy" {
+  source     = "../policy-library/s3-bucket-policy"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
+module "efs" {
+  source     = "../policy-library/efs"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 module "cloudwatch-alarms" {
   source     = "../policy-library/cloudwatch-alarms"
   prefix     = var.prefix
@@ -250,6 +262,8 @@ locals {
     "sns"                         = module.sns.policy_json
     "ses"                         = module.ses.policy_json
     "s3-private-storage"          = module.s3_private_storage.policy_json
+    "s3-bucket-policy"            = module.s3_bucket_policy.policy_json
+    "efs"                         = module.efs.policy_json
     "cloudwatch-alarms"           = module.cloudwatch-alarms.policy_json
     "ssm-write"                   = module.ssm-write.policy_json
     "secrets-manager"             = module.secrets-manager.policy_json

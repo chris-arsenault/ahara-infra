@@ -7,9 +7,42 @@ resource "aws_wafv2_web_acl" "alb" {
     allow {}
   }
 
+  # Foundry VTT (foundry-vtt repo) is fully exempt from WAF: its websocket
+  # game protocol and in-app file uploads trip the managed rules, the host
+  # only ever forwards to the Foundry target group, and Foundry handles its
+  # own auth. Allow terminates evaluation, so every later rule is skipped.
+  rule {
+    name     = "FoundryVttBypass"
+    priority = 0
+
+    action {
+      allow {}
+    }
+
+    statement {
+      byte_match_statement {
+        positional_constraint = "EXACTLY"
+        search_string         = "foundry.ahara.io"
+        field_to_match {
+          single_header { name = "host" }
+        }
+        text_transformation {
+          priority = 0
+          type     = "LOWERCASE"
+        }
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${local.prefix}-foundry-bypass"
+      sampled_requests_enabled   = true
+    }
+  }
+
   rule {
     name     = "AWS-AWSManagedRulesAmazonIpReputationList"
-    priority = 0
+    priority = 1
 
     override_action {
       none {}
@@ -31,7 +64,7 @@ resource "aws_wafv2_web_acl" "alb" {
 
   rule {
     name     = "AWS-AWSManagedRulesCommonRuleSet"
-    priority = 1
+    priority = 2
 
     override_action {
       none {}
@@ -62,7 +95,7 @@ resource "aws_wafv2_web_acl" "alb" {
   # SizeRestrictions_BODY is set to count above so it labels without blocking.
   rule {
     name     = "SizeRestrictions-except-sonar-upload"
-    priority = 2
+    priority = 3
 
     action {
       block {}
@@ -122,7 +155,7 @@ resource "aws_wafv2_web_acl" "alb" {
 
   rule {
     name     = "RateLimitByIp"
-    priority = 3
+    priority = 4
 
     action {
       block {}
@@ -147,7 +180,7 @@ resource "aws_wafv2_web_acl" "alb" {
   # the broader shared-ALB rate limit; token polling remains unaffected.
   rule {
     name     = "SulionPairingStartRateLimit"
-    priority = 4
+    priority = 5
 
     action {
       block {}
