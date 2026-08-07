@@ -36,11 +36,23 @@ variable "tags" {
   default     = {}
 }
 
+variable "entry_role_arn" {
+  description = "The role Roles Anywhere admits an identity as. Read from SSM when unset; pass it when the same apply creates it, since the parameter does not exist yet."
+  type        = string
+  default     = null
+}
+
 data "aws_ssm_parameter" "entry_role_arn" {
+  count = var.entry_role_arn == null ? 1 : 0
+
   name = "/ahara/machines/entry-role-arn"
 }
 
 locals {
+  entry_role_arn = (
+    var.entry_role_arn != null ? var.entry_role_arn : data.aws_ssm_parameter.entry_role_arn[0].value
+  )
+
   role_name   = "ahara-machine-${var.prefix}-${var.name}"
   workload_id = "spiffe://ahara/${var.prefix}/${var.name}"
 
@@ -57,7 +69,7 @@ data "aws_iam_policy_document" "assume" {
     effect = "Allow"
     principals {
       type        = "AWS"
-      identifiers = [data.aws_ssm_parameter.entry_role_arn.value]
+      identifiers = [local.entry_role_arn]
     }
     actions = [
       "sts:AssumeRole",

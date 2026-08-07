@@ -163,3 +163,70 @@ resource "aws_ssm_parameter" "ahara_machines_entry_role_arn" {
   type  = "String"
   value = aws_iam_role.ahara_machines_entry[0].arn
 }
+
+# -----------------------------------------------------------------------------
+# The trust appliance's own role
+#
+# It runs the household's only ACME client, so it is the only machine that
+# needs to answer a DNS-01 challenge. The role lives here rather than in the
+# appliance's own Terraform because the appliance's deploy path must not be
+# able to widen what the appliance may do.
+#
+# The identity it presents is one it minted for itself — it holds the CA key,
+# so an enrollment round trip would prove nothing. What that identity is worth
+# is decided entirely here.
+# -----------------------------------------------------------------------------
+
+# The same zone the network layer serves the public names from. The challenge
+# record for *.local.ahara.io is written here, because that subtree is
+# authoritative only on the LAN and Let's Encrypt cannot see it.
+data "aws_route53_zone" "root" {
+  count = local.ahara_machines_count
+
+  name         = "ahara.io."
+  private_zone = false
+}
+
+data "aws_iam_policy_document" "ahara_trust_route53" {
+  count = local.ahara_machines_count
+
+  # Answering DNS-01 means writing and removing one TXT record per order.
+  # Scoped to the zone that holds the household's names; no other zone and no
+  # zone administration.
+  statement {
+    sid    = "AnswerDnsChallenges"
+    effect = "Allow"
+    actions = [
+      "route53:ChangeResourceRecordSets",
+      "route53:ListResourceRecordSets",
+    ]
+    resources = ["arn:${data.aws_partition.current.partition}:route53:::hostedzone/${data.aws_route53_zone.root[0].zone_id}"]
+  }
+
+  # lego resolves the zone for a name before it writes, and both of these are
+  # account-wide reads with no resource form.
+  statement {
+    sid    = "FindTheZone"
+    effect = "Allow"
+    actions = [
+      "route53:ListHostedZones",
+      "route53:ListHostedZonesByName",
+      "route53:GetChange",
+    ]
+    resources = ["*"]
+  }
+}
+
+module "ahara_trust_machine_role" {
+  count  = local.ahara_machines_count
+  source = "../modules/machine-role"
+
+  prefix      = "appliance"
+  name        = "trust"
+  policy_json = data.aws_iam_policy_document.ahara_trust_route53[0].json
+
+  # This apply creates the entry role, so its ARN is passed rather than read
+  # back from the parameter the module would otherwise look up — that
+  # parameter does not exist yet on a first apply.
+  entry_role_arn = aws_iam_role.ahara_machines_entry[0].arn
+}
