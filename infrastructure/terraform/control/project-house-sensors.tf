@@ -22,5 +22,6 @@ module "project_house_sensors" {
 
   ssm_additional_parameter_paths = [
     "ahara/house-sensors/*",
+    "ahara/machines/workloads/house-sensors/*",
   ]
 }

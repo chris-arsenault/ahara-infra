@@ -36,6 +36,7 @@ data "aws_iam_policy_document" "this" {
     resources = [
       "arn:aws:iam::${var.account_id}:role/${var.prefix}-truenas-*",
       "arn:aws:iam::${var.account_id}:role/${var.prefix}/truenas/${var.prefix}-truenas-*",
+      "arn:aws:iam::${var.account_id}:role/ahara-machine-${var.prefix}-*",
     ]
     condition {
       test     = "StringEquals"
@@ -62,6 +63,7 @@ data "aws_iam_policy_document" "this" {
     resources = [
       "arn:aws:iam::${var.account_id}:role/${var.prefix}-truenas-*",
       "arn:aws:iam::${var.account_id}:role/${var.prefix}/truenas/${var.prefix}-truenas-*",
+      "arn:aws:iam::${var.account_id}:role/ahara-machine-${var.prefix}-*",
     ]
   }
 }
