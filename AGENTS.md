@@ -76,7 +76,7 @@ No circular dependencies. Cross-layer references use direct module outputs
 - `/ahara/db/<project>/*` — per-project app creds (published by db-migrate Lambda)
 - `/ahara/auth-trigger/clients/*` — client ID → project key map (written by consumers)
 - `/ahara/sonarqube/*`, `/ahara/truenas/*`, `/ahara/komodo/*` — operational params
-- `/ahara/truenas-roles-anywhere/*` — TrueNAS IAM Roles Anywhere discovery, workload registrations, short-lived enrollment tokens, and the self-managed CA cert/key (the CA is self-managed specifically to avoid AWS Private CA's ~$400/mo fixed cost)
+- `/ahara/machines/*` — Roles Anywhere discovery: trust anchor, profile, and entry role ARNs. All public identifiers. The certificate authority runs on the trust appliance (the `ahara-trust` repository); no key material for it exists in AWS or in Terraform state
 - `/ahara/og-server/*` — OG Lambda artifact location
 
 **Route53** — `ahara.io.` zone looked up by name (not SSM).

@@ -20,24 +20,10 @@ data "aws_iam_policy_document" "this" {
       "ssm:GetParameters",
     ]
     resources = [
-      "arn:aws:ssm:*:${var.account_id}:parameter/ahara/truenas-roles-anywhere/*",
-    ]
-  }
-
-  statement {
-    sid    = "WriteRolesAnywhereEnrollmentTokens"
-    effect = "Allow"
-    actions = [
-      "ssm:DeleteParameter",
-      "ssm:GetParameter",
-      "ssm:PutParameter",
-      "ssm:AddTagsToResource",
-      "ssm:RemoveTagsFromResource",
-      "ssm:ListTagsForResource",
-    ]
-    resources = [
-      "arn:aws:ssm:*:${var.account_id}:parameter/ahara/truenas-roles-anywhere/enrollment/${var.prefix}/*",
-      "arn:aws:ssm:*:${var.account_id}:parameter/ahara/truenas-roles-anywhere/workloads/${var.prefix}/*",
+      # Discovery only: where to authenticate. Identities are issued on the
+      # LAN by the trust appliance, so nothing here mints or consumes
+      # enrollment credentials.
+      "arn:aws:ssm:*:${var.account_id}:parameter/ahara/machines/*",
     ]
   }
 
