@@ -1,7 +1,11 @@
 /// Platform OG Server — generic Lambda that serves HTML with dynamic OpenGraph
 /// meta tags. Configured via OG_CONFIG env var (JSON). Each project deploys
-/// its own instance with project-specific route config and DB credentials.
+/// its own instance with project-specific route config, an S3 manifest, or DB
+/// credentials.
+mod manifest;
+
 use lambda_http::{Body, Error, Request, Response, run, service_fn};
+use manifest::{ManifestDocument, ManifestLocation};
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::env;
@@ -214,6 +218,47 @@ fn resolve_og_no_db(config: &OgConfig, site_url: &str, path: &str) -> OgTags {
     }
 }
 
+fn resolve_og_manifest(
+    manifest: &ManifestDocument,
+    config: &OgConfig,
+    site_url: &str,
+    path: &str,
+) -> (OgTags, bool) {
+    let route = manifest.routes.get(path).or_else(|| {
+        path.strip_suffix('/')
+            .filter(|normalized| !normalized.is_empty())
+            .and_then(|normalized| manifest.routes.get(normalized))
+    });
+    if let Some(route) = route {
+        let image = if route.image.is_empty() {
+            resolve_image(&config.defaults.image, site_url)
+        } else {
+            resolve_image(&route.image, site_url)
+        };
+        return (
+            OgTags {
+                title: route.title.clone(),
+                description: route.description.clone(),
+                image,
+                url: format!("{site_url}{path}"),
+                og_type: route.og_type.clone(),
+            },
+            true,
+        );
+    }
+
+    (
+        OgTags {
+            title: config.defaults.title.clone(),
+            description: config.defaults.description.clone(),
+            image: resolve_image(&config.defaults.image, site_url),
+            url: format!("{site_url}{path}"),
+            og_type: "website".into(),
+        },
+        false,
+    )
+}
+
 fn resolve_image(image: &str, site_url: &str) -> String {
     if image.starts_with("http://") || image.starts_with("https://") {
         image.to_string()
@@ -363,6 +408,7 @@ struct AppConfig {
     entry_js: String,
     entry_css: String,
     site_url: String,
+    manifest: Option<ManifestLocation>,
 }
 
 static CONFIG: OnceLock<AppConfig> = OnceLock::new();
@@ -374,10 +420,19 @@ fn get_config() -> &'static AppConfig {
         let entry_js = env::var("ENTRY_JS").unwrap_or_else(|_| "/assets/index.js".into());
         let entry_css = env::var("ENTRY_CSS").unwrap_or_else(|_| "/assets/index.css".into());
         let site_url = env::var("SITE_URL").expect("SITE_URL env var required");
+        let manifest = match (
+            env::var("OG_MANIFEST_BUCKET").ok(),
+            env::var("OG_MANIFEST_KEY").ok(),
+        ) {
+            (Some(bucket), Some(key)) => Some(ManifestLocation { bucket, key }),
+            (None, None) => None,
+            _ => panic!("OG_MANIFEST_BUCKET and OG_MANIFEST_KEY must be set together"),
+        };
 
         info!(
             site_name = %og.site_name,
             routes = og.routes.len(),
+            manifest = manifest.is_some(),
             "og-server configured"
         );
 
@@ -386,6 +441,7 @@ fn get_config() -> &'static AppConfig {
             entry_js,
             entry_css,
             site_url,
+            manifest,
         }
     })
 }
@@ -396,20 +452,41 @@ async fn handler(req: Request) -> Result<Response<Body>, Error> {
 
     let config = get_config();
 
-    // Two modes:
+    // Three modes:
+    //   - manifest set  → read exact route metadata from a generated S3 object
     //   - DB_HOST set   → dynamic mode: query DB, render templates
-    //   - DB_HOST unset → static mode: route literals only, no DB connection
+    //   - neither set   → static mode: route literals only, no DB connection
     // When DB is configured but the connection fails, fall back to defaults only
     // (no route matching) so projects like tastebase don't leak unrendered
     // `{{placeholder}}` strings into OG tags during outages.
-    let db_configured = env::var("DB_HOST").is_ok();
+    let manifest_result = if let Some(location) = &config.manifest {
+        match manifest::load(location).await {
+            Ok(document) => Some(resolve_og_manifest(
+                document,
+                &config.og,
+                &config.site_url,
+                &path,
+            )),
+            Err(error) => {
+                warn!(error = %error, "OG manifest load failed, using configured routes");
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let manifest_failed = config.manifest.is_some() && manifest_result.is_none();
+    let db_configured = env::var("DB_HOST").is_ok() && config.manifest.is_none();
 
-    let (og, db_failed) = if db_configured {
+    let (og, resolution_failed, matched) = if let Some((og, matched)) = manifest_result {
+        (og, false, matched)
+    } else if db_configured {
         match ensure_client().await {
             Ok(guard) => {
                 let client = guard.as_ref().expect("client initialized on success");
                 let og = resolve_og(client, &config.og, &config.site_url, &path).await;
-                (og, false)
+                let matched = match_route(&path, &config.og.routes).is_some();
+                (og, false, matched)
             }
             Err(e) => {
                 warn!(error = %e, "DB connection failed, using default OG tags");
@@ -420,17 +497,18 @@ async fn handler(req: Request) -> Result<Response<Body>, Error> {
                     url: format!("{}{}", config.site_url, path),
                     og_type: "website".into(),
                 };
-                (og, true)
+                (og, true, false)
             }
         }
     } else {
         let og = resolve_og_no_db(&config.og, &config.site_url, &path);
-        (og, false)
+        let matched = match_route(&path, &config.og.routes).is_some();
+        (og, manifest_failed, matched)
     };
 
     // Matched routes get longer cache (content changes less often than defaults).
     // On DB failure we keep the short cache to recover quickly once DB is back.
-    let cache_control = if !db_failed && match_route(&path, &config.og.routes).is_some() {
+    let cache_control = if !resolution_failed && matched {
         "public, s-maxage=86400, max-age=0"
     } else {
         "public, s-maxage=3600, max-age=0"
@@ -558,5 +636,41 @@ mod tests {
         };
         let og = resolve_og_no_db(&config, "https://example.com", "/page");
         assert_eq!(og.title, "Literal {{unused}} Title");
+    }
+
+    #[test]
+    fn resolve_og_manifest_uses_exact_exported_route() {
+        let manifest = ManifestDocument {
+            routes: HashMap::from([(
+                "/world/entry/name".into(),
+                manifest::ManifestRoute {
+                    title: "Name · World".into(),
+                    description: "Entry summary".into(),
+                    image: "/entry.png".into(),
+                    og_type: "article".into(),
+                },
+            )]),
+        };
+        let (og, matched) = resolve_og_manifest(
+            &manifest,
+            &test_config(),
+            "https://example.com",
+            "/world/entry/name",
+        );
+        assert!(matched);
+        assert_eq!(og.title, "Name · World");
+        assert_eq!(og.image, "https://example.com/entry.png");
+    }
+
+    #[test]
+    fn resolve_og_manifest_uses_defaults_for_an_unknown_route() {
+        let manifest = ManifestDocument {
+            routes: HashMap::new(),
+        };
+        let (og, matched) =
+            resolve_og_manifest(&manifest, &test_config(), "https://example.com", "/missing");
+        assert!(!matched);
+        assert_eq!(og.title, "Default Title");
+        assert_eq!(og.og_type, "website");
     }
 }

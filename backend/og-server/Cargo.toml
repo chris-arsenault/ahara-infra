@@ -8,6 +8,8 @@ name = "og-server"
 path = "src/main.rs"
 
 [dependencies]
+aws-config = { workspace = true }
+aws-sdk-s3 = { workspace = true }
 lambda_http = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
