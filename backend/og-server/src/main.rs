@@ -446,26 +446,25 @@ fn get_config() -> &'static AppConfig {
     })
 }
 
-async fn handler(req: Request) -> Result<Response<Body>, Error> {
-    let path = req.uri().path().to_string();
-    info!(path = %path, "og-server request");
-
-    let config = get_config();
-
-    // Three modes:
-    //   - manifest set  → read exact route metadata from a generated S3 object
-    //   - DB_HOST set   → dynamic mode: query DB, render templates
-    //   - neither set   → static mode: route literals only, no DB connection
-    // When DB is configured but the connection fails, fall back to defaults only
-    // (no route matching) so projects like tastebase don't leak unrendered
-    // `{{placeholder}}` strings into OG tags during outages.
+/// Resolves the tags for a path, and reports whether resolution degraded and
+/// whether a route actually matched — the two facts the caller caches on.
+///
+/// Three modes:
+///   - manifest set  → read exact route metadata from a generated S3 object
+///   - DB_HOST set   → dynamic mode: query DB, render templates
+///   - neither set   → static mode: route literals only, no DB connection
+///
+/// When DB is configured but the connection fails, fall back to defaults only
+/// (no route matching) so projects like tastebase don't leak unrendered
+/// `{{placeholder}}` strings into OG tags during outages.
+async fn resolve_for_path(config: &AppConfig, path: &str) -> (OgTags, bool, bool) {
     let manifest_result = if let Some(location) = &config.manifest {
         match manifest::load(location).await {
             Ok(document) => Some(resolve_og_manifest(
                 document,
                 &config.og,
                 &config.site_url,
-                &path,
+                path,
             )),
             Err(error) => {
                 warn!(error = %error, "OG manifest load failed, using configured routes");
@@ -478,33 +477,43 @@ async fn handler(req: Request) -> Result<Response<Body>, Error> {
     let manifest_failed = config.manifest.is_some() && manifest_result.is_none();
     let db_configured = env::var("DB_HOST").is_ok() && config.manifest.is_none();
 
-    let (og, resolution_failed, matched) = if let Some((og, matched)) = manifest_result {
-        (og, false, matched)
-    } else if db_configured {
-        match ensure_client().await {
-            Ok(guard) => {
-                let client = guard.as_ref().expect("client initialized on success");
-                let og = resolve_og(client, &config.og, &config.site_url, &path).await;
-                let matched = match_route(&path, &config.og.routes).is_some();
-                (og, false, matched)
-            }
-            Err(e) => {
-                warn!(error = %e, "DB connection failed, using default OG tags");
-                let og = OgTags {
-                    title: config.og.defaults.title.clone(),
-                    description: config.og.defaults.description.clone(),
-                    image: resolve_image(&config.og.defaults.image, &config.site_url),
-                    url: format!("{}{}", config.site_url, path),
-                    og_type: "website".into(),
-                };
-                (og, true, false)
-            }
+    if let Some((og, matched)) = manifest_result {
+        return (og, false, matched);
+    }
+
+    if !db_configured {
+        let og = resolve_og_no_db(&config.og, &config.site_url, path);
+        let matched = match_route(path, &config.og.routes).is_some();
+        return (og, manifest_failed, matched);
+    }
+
+    match ensure_client().await {
+        Ok(guard) => {
+            let client = guard.as_ref().expect("client initialized on success");
+            let og = resolve_og(client, &config.og, &config.site_url, path).await;
+            let matched = match_route(path, &config.og.routes).is_some();
+            (og, false, matched)
         }
-    } else {
-        let og = resolve_og_no_db(&config.og, &config.site_url, &path);
-        let matched = match_route(&path, &config.og.routes).is_some();
-        (og, manifest_failed, matched)
-    };
+        Err(e) => {
+            warn!(error = %e, "DB connection failed, using default OG tags");
+            let og = OgTags {
+                title: config.og.defaults.title.clone(),
+                description: config.og.defaults.description.clone(),
+                image: resolve_image(&config.og.defaults.image, &config.site_url),
+                url: format!("{}{}", config.site_url, path),
+                og_type: "website".into(),
+            };
+            (og, true, false)
+        }
+    }
+}
+
+async fn handler(req: Request) -> Result<Response<Body>, Error> {
+    let path = req.uri().path().to_string();
+    info!(path = %path, "og-server request");
+
+    let config = get_config();
+    let (og, resolution_failed, matched) = resolve_for_path(config, &path).await;
 
     // Matched routes get longer cache (content changes less often than defaults).
     // On DB failure we keep the short cache to recover quickly once DB is back.
