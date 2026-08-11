@@ -32,3 +32,11 @@ output "cognito_chris_password" {
 output "rds_endpoint" {
   value = module.services.rds_endpoint
 }
+
+output "ci_history_pre_cutover" {
+  value = module.services.ci_history_pre_cutover
+}
+
+output "ci_history_post_cutover" {
+  value = module.services.ci_history_post_cutover
+}

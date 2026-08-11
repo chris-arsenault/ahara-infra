@@ -62,3 +62,23 @@ module "ahara_infra_project" {
     "security-audit",
   ]
 }
+
+# The consolidated platform deployer runs the TrueNAS database provisioner and
+# the one-time CI history copy. These are Ahara-only rollout operations, so keep
+# their invoke grants off the shared db-migrate policy used by product repos.
+resource "aws_iam_role_policy" "ahara_infra_platform_migrations" {
+  name = "ahara-platform-migrations"
+  role = module.ahara_infra_project.role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "InvokePlatformMigrationLambdas"
+      Effect = "Allow"
+      Action = ["lambda:InvokeFunction"]
+      Resource = [
+        "arn:aws:lambda:*:${local.account_id}:function:ahara-db-migrate-truenas",
+        "arn:aws:lambda:*:${local.account_id}:function:ahara-ci-history-migrate",
+      ]
+    }]
+  })
+}

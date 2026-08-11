@@ -80,3 +80,8 @@ variable "reverse_proxy_cognito_hosts" {
   description = "List of hostnames that should be gated by Cognito authentication on the shared ALB"
   type        = list(string)
 }
+
+variable "control_plane_revision" {
+  description = "Active deployer-policy revision required before service-side provisioning invocations"
+  type        = string
+}

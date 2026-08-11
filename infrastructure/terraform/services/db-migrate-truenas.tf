@@ -21,6 +21,13 @@ variable "truenas_db_stacks" {
         }
       }
     }
+    ahara-observability = {
+      databases = {
+        engineering = {
+          db_name = "ahara_engineering_quality"
+        }
+      }
+    }
     harbor = {
       databases = {
         app = {
@@ -113,6 +120,23 @@ resource "aws_lambda_function" "db_migrate_truenas" {
   }
 
   depends_on = [aws_cloudwatch_log_group.db_migrate_truenas]
+}
+
+# Provision this shared reporting tenant before ci-ingest switches its
+# connection. The invocation is idempotent and uses the existing TrueNAS
+# PostgreSQL service; it does not create another database server.
+resource "aws_lambda_invocation" "engineering_quality_database" {
+  function_name = aws_lambda_function.db_migrate_truenas.function_name
+  input = jsonencode({
+    stack_name   = "ahara-observability"
+    database_ids = ["engineering"]
+  })
+
+  triggers = {
+    function_code          = aws_lambda_function.db_migrate_truenas.source_code_hash
+    database_shape         = sha256(jsonencode(var.truenas_db_stacks["ahara-observability"].databases["engineering"]))
+    control_plane_revision = var.control_plane_revision
+  }
 }
 
 # SSM outputs

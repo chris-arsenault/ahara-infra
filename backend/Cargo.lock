@@ -800,6 +800,7 @@ dependencies = [
  "chrono",
  "ci-ingest",
  "lambda_http",
+ "lambda_runtime",
  "rustls 0.23.37",
  "rustls-pemfile",
  "rustls-pki-types",

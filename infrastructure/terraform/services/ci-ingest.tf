@@ -1,5 +1,5 @@
 # =============================================================================
-# CI Ingest Lambda — receives build reports, stores in shared RDS
+# CI Ingest Lambda — receives engineering reports, stores in TrueNAS PostgreSQL
 # Attached to ci.services.ahara.io on the shared ALB with an unauthenticated route.
 # =============================================================================
 
@@ -17,11 +17,14 @@ module "ci_ingest" {
   alb = local.alb_ctx
 
   environment = {
-    DB_HOST       = aws_db_instance.ahara.address
-    DB_PORT       = tostring(aws_db_instance.ahara.port)
-    DB_NAME       = aws_db_instance.ahara.db_name
-    DB_SSM_PREFIX = "/${local.prefix}/db/${local.prefix}"
+    DB_HOST       = "192.168.66.3"
+    DB_PORT       = "5432"
+    DB_NAME       = var.truenas_db_stacks["ahara-observability"].databases["engineering"].db_name
+    DB_SSM_PREFIX = "/ahara/truenas-db/ahara-observability/engineering"
     INGEST_TOKEN  = random_password.ci_ingest_token.result
+    MIGRATION_GATE = sha256(
+      aws_lambda_invocation.ci_history_pre_cutover.result
+    )
   }
 
   iam_policy = [jsonencode({
@@ -30,7 +33,7 @@ module "ci_ingest" {
       {
         Effect   = "Allow"
         Action   = ["ssm:GetParameter"]
-        Resource = ["arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/${local.prefix}/db/${local.prefix}/*"]
+        Resource = ["arn:aws:ssm:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:parameter/ahara/truenas-db/ahara-observability/engineering/*"]
       }
     ]
   })]
@@ -41,6 +44,7 @@ module "ci_ingest" {
       routes = [{ priority = 150, paths = ["/*"], authenticated = false }]
     }
   }
+
 }
 
 # --- SSM outputs ---

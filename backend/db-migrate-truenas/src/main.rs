@@ -189,18 +189,49 @@ async fn create_role_if_missing(
         .query("SELECT 1 FROM pg_roles WHERE rolname = $1", &[&role_name])
         .await
         .map_err(|e| format!("Failed to query pg_roles: {e}"))?;
-    if !role_rows.is_empty() {
+    let role_exists = !role_rows.is_empty();
+    let credentials_complete = if role_exists {
+        let mut complete = true;
+        for suffix in ["username", "password", "database"] {
+            if ssm
+                .get_parameter()
+                .name(format!("{ssm_prefix}/{suffix}"))
+                .with_decryption(true)
+                .send()
+                .await
+                .is_err()
+            {
+                complete = false;
+            }
+        }
+        complete
+    } else {
+        false
+    };
+    if credentials_complete {
         return Ok(false);
     }
 
     let password = generate_password();
-    info!(database_id, role = role_name, "Creating application role");
-
-    pg.batch_execute(&format!(
-        "CREATE ROLE \"{role_name}\" LOGIN PASSWORD '{password}'"
-    ))
-    .await
-    .map_err(|e| format!("Failed to CREATE ROLE {role_name}: {e}"))?;
+    if role_exists {
+        info!(
+            database_id,
+            role = role_name,
+            "Rotating role after incomplete credential publication"
+        );
+        pg.batch_execute(&format!(
+            "ALTER ROLE \"{role_name}\" WITH PASSWORD '{password}'"
+        ))
+        .await
+        .map_err(|e| format!("Failed to ALTER ROLE {role_name}: {e}"))?;
+    } else {
+        info!(database_id, role = role_name, "Creating database role");
+        pg.batch_execute(&format!(
+            "CREATE ROLE \"{role_name}\" LOGIN PASSWORD '{password}'"
+        ))
+        .await
+        .map_err(|e| format!("Failed to CREATE ROLE {role_name}: {e}"))?;
+    }
 
     ssm.put_parameter()
         .name(format!("{ssm_prefix}/username"))
@@ -258,6 +289,7 @@ async fn grant_project_schema_access(
     db: &Client,
     db_name: &str,
     role_name: &str,
+    reader_name: &str,
 ) -> Result<(), Error> {
     db.batch_execute(&format!(
         "GRANT ALL ON SCHEMA public TO \"{role_name}\";
@@ -267,7 +299,21 @@ async fn grant_project_schema_access(
          GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO \"{role_name}\";"
     ))
     .await
-    .map_err(|e| format!("Failed to set schema grants for {role_name} on {db_name}: {e}").into())
+    .map_err(|e| format!("Failed to set schema grants for {role_name} on {db_name}: {e}"))?;
+
+    db.batch_execute(&format!(
+        "GRANT USAGE ON SCHEMA public TO \"{reader_name}\";
+         GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{reader_name}\";
+         GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{reader_name}\";
+         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO \"{reader_name}\";
+         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO \"{reader_name}\";
+         ALTER DEFAULT PRIVILEGES FOR ROLE \"{role_name}\" IN SCHEMA public GRANT SELECT ON TABLES TO \"{reader_name}\";
+         ALTER DEFAULT PRIVILEGES FOR ROLE \"{role_name}\" IN SCHEMA public GRANT SELECT ON SEQUENCES TO \"{reader_name}\";"
+    ))
+    .await
+    .map_err(|e| {
+        format!("Failed to set reader grants for {reader_name} on {db_name}: {e}").into()
+    })
 }
 
 async fn ensure_database(
@@ -279,24 +325,38 @@ async fn ensure_database(
 ) -> Result<DatabaseResult, Error> {
     let db_name = &database.db_name;
     let role_name = format!("{stack_name}_{database_id}_app");
+    let reader_name = format!("{stack_name}_{database_id}_reader");
     let ssm_prefix = format!("/ahara/truenas-db/{stack_name}/{database_id}");
+    let reader_ssm_prefix = format!("{ssm_prefix}/reader");
     let mut created = create_database_if_missing(pg, database_id, db_name).await?;
     created |=
         create_role_if_missing(pg, ssm, database_id, db_name, &role_name, &ssm_prefix).await?;
+    created |= create_role_if_missing(
+        pg,
+        ssm,
+        database_id,
+        db_name,
+        &reader_name,
+        &reader_ssm_prefix,
+    )
+    .await?;
 
     pg.batch_execute(&format!(
-        "GRANT ALL PRIVILEGES ON DATABASE \"{db_name}\" TO \"{role_name}\""
+        "GRANT ALL PRIVILEGES ON DATABASE \"{db_name}\" TO \"{role_name}\";
+         GRANT CONNECT ON DATABASE \"{db_name}\" TO \"{reader_name}\";
+         GRANT \"{role_name}\" TO CURRENT_USER;"
     ))
     .await
     .map_err(|e| format!("Failed to GRANT on database {db_name}: {e}"))?;
 
     let db = connect_project_database(ssm, db_name).await?;
-    grant_project_schema_access(&db, db_name, &role_name).await?;
+    grant_project_schema_access(&db, db_name, &role_name, &reader_name).await?;
 
     info!(
         database_id,
         db = db_name,
         role = role_name,
+        reader = reader_name,
         "Database ready"
     );
 

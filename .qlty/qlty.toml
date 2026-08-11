@@ -1,0 +1,23 @@
+config_version = "0"
+
+exclude_patterns = [
+  "**/.terraform/**",
+  "**/target/**",
+  "**/target-clippy/**",
+  "**/target-cov/**",
+  "**/target-lambda/**",
+]
+
+test_patterns = [
+  "**/tests/**",
+  "**/*_test.*",
+  "**/*.test.*",
+  "**/*.spec.*",
+]
+
+[smells]
+mode = "comment"
+
+[[source]]
+name = "default"
+default = true

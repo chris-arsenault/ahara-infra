@@ -33,3 +33,13 @@ output "rds_endpoint" {
   description = "Shared RDS endpoint"
   value       = aws_db_instance.ahara.endpoint
 }
+
+output "ci_history_pre_cutover" {
+  description = "Legacy CI history migration result before the ingest cutover"
+  value       = jsondecode(aws_lambda_invocation.ci_history_pre_cutover.result)
+}
+
+output "ci_history_post_cutover" {
+  description = "Legacy CI history migration result after the ingest cutover"
+  value       = jsondecode(aws_lambda_invocation.ci_history_post_cutover.result)
+}

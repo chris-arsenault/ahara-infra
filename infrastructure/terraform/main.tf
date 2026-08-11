@@ -68,4 +68,5 @@ module "services" {
   route53_zone_id                = module.network.route53_zone_id
   reverse_proxy_target_group_arn = module.network.reverse_proxy_target_group_arn
   reverse_proxy_cognito_hosts    = module.network.reverse_proxy_cognito_hosts
+  control_plane_revision         = module.control.ahara_infra_deployment_revision
 }
