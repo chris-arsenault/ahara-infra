@@ -91,10 +91,11 @@ resource "aws_wafv2_web_acl" "alb" {
     }
   }
 
-  # Re-block oversized bodies everywhere except SonarQube report upload.
-  # SizeRestrictions_BODY is set to count above so it labels without blocking.
+  # Re-block oversized bodies everywhere except the two authenticated ingest
+  # endpoints that intentionally accept larger reports. SizeRestrictions_BODY
+  # is set to count above so it labels without blocking.
   rule {
-    name     = "SizeRestrictions-except-sonar-upload"
+    name     = "SizeRestrictions-except-report-ingest"
     priority = 3
 
     action {
@@ -143,12 +144,72 @@ resource "aws_wafv2_web_acl" "alb" {
             }
           }
         }
+        statement {
+          not_statement {
+            statement {
+              and_statement {
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "/api/ci/batch"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "ci.services.ahara.io"
+                    field_to_match {
+                      single_header { name = "host" }
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
+                }
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "POST"
+                    field_to_match {
+                      method {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "STARTS_WITH"
+                    search_string         = "application/json"
+                    field_to_match {
+                      single_header { name = "content-type" }
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     }
 
     visibility_config {
       cloudwatch_metrics_enabled = true
-      metric_name                = "${local.prefix}-size-except-sonar"
+      metric_name                = "${local.prefix}-size-except-report-ingest"
       sampled_requests_enabled   = true
     }
   }
