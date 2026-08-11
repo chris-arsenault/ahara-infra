@@ -75,6 +75,70 @@ resource "aws_wafv2_web_acl" "alb" {
         vendor_name = "AWS"
         name        = "AWSManagedRulesCommonRuleSet"
 
+        # Engineering batches contain retained source code, which can match
+        # body-oriented RFI/XSS signatures by design. The ingest Lambda still
+        # enforces its bearer token, typed payload, and batch/body limits.
+        scope_down_statement {
+          not_statement {
+            statement {
+              and_statement {
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "/api/ci/batch"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "ci.services.ahara.io"
+                    field_to_match {
+                      single_header { name = "host" }
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
+                }
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "POST"
+                    field_to_match {
+                      method {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "STARTS_WITH"
+                    search_string         = "application/json"
+                    field_to_match {
+                      single_header { name = "content-type" }
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
         rule_action_override {
           name = "SizeRestrictions_BODY"
           action_to_use {

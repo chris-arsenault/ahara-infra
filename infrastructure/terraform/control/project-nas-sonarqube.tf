@@ -17,6 +17,7 @@ module "project_nas_sonarqube" {
   policy_modules = [
     "terraform-state",
     "komodo-deploy",
+    "ssm-write",
   ]
 
   ssm_additional_parameter_paths = [
