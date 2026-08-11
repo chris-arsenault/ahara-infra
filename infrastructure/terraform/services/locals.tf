@@ -8,8 +8,7 @@ locals {
   #   services.ahara.io              — parent A record (satisfies Cognito)
   #   auth.services.ahara.io         — Cognito custom domain
   #   ci.services.ahara.io           — ci-ingest
-  #   dashboards.services.ahara.io   — reverse proxy (dashboards, sonar, etc.)
-  #   sonar.services.ahara.io        — (handled by reverse proxy)
+  #   dashboards.services.ahara.io   — reverse proxy (Grafana)
   services_domain = "services.${var.domain_name}"
   auth_domain     = "auth.${local.services_domain}"
 

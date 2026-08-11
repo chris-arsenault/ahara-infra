@@ -7,8 +7,7 @@ data "aws_iam_policy_document" "this" {
     ]
     resources = [
       "arn:aws:lambda:*:${var.account_id}:function:ahara-komodo-proxy",
-      "arn:aws:lambda:*:${var.account_id}:function:ahara-db-migrate-truenas",
-      "arn:aws:lambda:*:${var.account_id}:function:nas-sonarqube-ci-token"
+      "arn:aws:lambda:*:${var.account_id}:function:ahara-db-migrate-truenas"
     ]
   }
 

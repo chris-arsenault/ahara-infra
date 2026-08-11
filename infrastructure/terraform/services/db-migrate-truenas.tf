@@ -14,13 +14,6 @@ variable "truenas_db_stacks" {
     }))
   }))
   default = {
-    sonarqube = {
-      databases = {
-        app = {
-          db_name = "sonarqube"
-        }
-      }
-    }
     ahara-observability = {
       databases = {
         engineering = {

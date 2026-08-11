@@ -31,12 +31,6 @@ locals {
       port    = 30038
       auth    = "passthrough"
     }
-    "sonar.services.ahara.io" = {
-      address       = "192.168.66.3"
-      port          = 30090
-      auth          = "passthrough"
-      max_body_size = "5m"
-    }
     "api.airwave.ahara.io" = {
       address   = "192.168.66.3"
       port      = 7882
