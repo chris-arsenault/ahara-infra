@@ -77,7 +77,9 @@ resource "aws_iam_role_policy" "ahara_infra_platform_migrations" {
       Action = ["lambda:InvokeFunction"]
       Resource = [
         "arn:aws:lambda:*:${local.account_id}:function:ahara-db-migrate-truenas",
+        "arn:aws:lambda:*:${local.account_id}:function:ahara-db-migrate-truenas:*",
         "arn:aws:lambda:*:${local.account_id}:function:ahara-ci-history-migrate",
+        "arn:aws:lambda:*:${local.account_id}:function:ahara-ci-history-migrate:*",
       ]
     }]
   })
