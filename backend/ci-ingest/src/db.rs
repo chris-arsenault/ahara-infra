@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio_postgres::Client;
 
@@ -77,7 +77,7 @@ pub struct BuildReport {
     pub coverage_line_rate: Option<f64>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct CheckReport {
     pub job_name: String,
     pub name: String,
@@ -88,7 +88,7 @@ pub struct CheckReport {
     pub duration_ms: Option<i32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct TestSuiteReport {
     pub framework: String,
     pub path: String,
@@ -101,7 +101,7 @@ pub struct TestSuiteReport {
     pub duration_ms: Option<i32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct CoverageFileReport {
     pub path: String,
     pub lines_total: i32,
@@ -141,7 +141,7 @@ pub struct QualityCompleteReport {
     pub completed_at: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct QualityFileMetric {
     pub path: String,
     pub name: String,
@@ -163,7 +163,7 @@ pub struct QualityFileMetric {
     pub debt_minutes: i32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct QualityFunctionMetric {
     pub metric_key: String,
     pub path: String,
@@ -177,7 +177,7 @@ pub struct QualityFunctionMetric {
     pub lcom4: Option<i32>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct QualitySource {
     pub path: String,
     pub language: String,
@@ -185,7 +185,7 @@ pub struct QualitySource {
     pub content_sha256: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct QualityFinding {
     pub fingerprint: String,
     pub path: String,
@@ -460,288 +460,262 @@ pub async fn complete_quality_scan(
         .await
 }
 
+fn batch_items_json<T: Serialize>(items: &[T]) -> Value {
+    serde_json::to_value(items).expect("engineering report batch items serialize")
+}
+
 pub async fn ingest_batch(
     client: &Client,
     batch: &BatchReport,
 ) -> Result<(), tokio_postgres::Error> {
     match batch {
         BatchReport::Checks { run_id, items } => {
-            for item in items {
-                client
-                    .execute(
-                        "INSERT INTO ci_check (
-                           run_id, job_name, name, category, status,
-                           started_at, completed_at, duration_ms
-                         )
-                         VALUES (
-                           $1, $2, $3, $4, $5,
-                           NULLIF($6, '')::timestamptz,
-                           NULLIF($7, '')::timestamptz, $8
-                         )
-                         ON CONFLICT (run_id, job_name, name) DO UPDATE SET
-                           category = EXCLUDED.category,
-                           status = EXCLUDED.status,
-                           started_at = EXCLUDED.started_at,
-                           completed_at = EXCLUDED.completed_at,
-                           duration_ms = EXCLUDED.duration_ms",
-                        &[
-                            run_id,
-                            &item.job_name,
-                            &item.name,
-                            &item.category,
-                            &item.status,
-                            &item.started_at.as_deref().unwrap_or(""),
-                            &item.completed_at.as_deref().unwrap_or(""),
-                            &item.duration_ms,
-                        ],
-                    )
-                    .await?;
-            }
+            let items = batch_items_json(items);
+            client
+                .execute(
+                    "INSERT INTO ci_check (
+                       run_id, job_name, name, category, status,
+                       started_at, completed_at, duration_ms
+                     )
+                     SELECT
+                       $1, item.job_name, item.name, item.category, item.status,
+                       NULLIF(item.started_at, '')::timestamptz,
+                       NULLIF(item.completed_at, '')::timestamptz,
+                       item.duration_ms
+                     FROM jsonb_to_recordset($2) AS item(
+                       job_name TEXT, name TEXT, category TEXT, status TEXT,
+                       started_at TEXT, completed_at TEXT, duration_ms INTEGER
+                     )
+                     ON CONFLICT (run_id, job_name, name) DO UPDATE SET
+                       category = EXCLUDED.category,
+                       status = EXCLUDED.status,
+                       started_at = EXCLUDED.started_at,
+                       completed_at = EXCLUDED.completed_at,
+                       duration_ms = EXCLUDED.duration_ms",
+                    &[run_id, &items],
+                )
+                .await?;
         }
         BatchReport::TestSuites { run_id, items } => {
-            for item in items {
-                client
-                    .execute(
-                        "INSERT INTO test_suite (
-                           run_id, framework, path, name, tests, passed,
-                           failures, errors, skipped, duration_ms
-                         )
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                         ON CONFLICT (run_id, framework, path, name) DO UPDATE SET
-                           tests = EXCLUDED.tests,
-                           passed = EXCLUDED.passed,
-                           failures = EXCLUDED.failures,
-                           errors = EXCLUDED.errors,
-                           skipped = EXCLUDED.skipped,
-                           duration_ms = EXCLUDED.duration_ms",
-                        &[
-                            run_id,
-                            &item.framework,
-                            &item.path,
-                            &item.name,
-                            &item.tests,
-                            &item.passed,
-                            &item.failures,
-                            &item.errors,
-                            &item.skipped,
-                            &item.duration_ms,
-                        ],
-                    )
-                    .await?;
-            }
+            let items = batch_items_json(items);
+            client
+                .execute(
+                    "INSERT INTO test_suite (
+                       run_id, framework, path, name, tests, passed,
+                       failures, errors, skipped, duration_ms
+                     )
+                     SELECT
+                       $1, item.framework, item.path, item.name, item.tests,
+                       item.passed, item.failures, item.errors, item.skipped,
+                       item.duration_ms
+                     FROM jsonb_to_recordset($2) AS item(
+                       framework TEXT, path TEXT, name TEXT, tests INTEGER,
+                       passed INTEGER, failures INTEGER, errors INTEGER,
+                       skipped INTEGER, duration_ms INTEGER
+                     )
+                     ON CONFLICT (run_id, framework, path, name) DO UPDATE SET
+                       tests = EXCLUDED.tests,
+                       passed = EXCLUDED.passed,
+                       failures = EXCLUDED.failures,
+                       errors = EXCLUDED.errors,
+                       skipped = EXCLUDED.skipped,
+                       duration_ms = EXCLUDED.duration_ms",
+                    &[run_id, &items],
+                )
+                .await?;
         }
         BatchReport::CoverageFiles { run_id, items } => {
-            for item in items {
-                client
-                    .execute(
-                        "INSERT INTO coverage_file (
-                           run_id, path, lines_total, lines_covered, line_rate,
-                           branches_total, branches_covered, branch_rate
-                         )
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                         ON CONFLICT (run_id, path) DO UPDATE SET
-                           lines_total = EXCLUDED.lines_total,
-                           lines_covered = EXCLUDED.lines_covered,
-                           line_rate = EXCLUDED.line_rate,
-                           branches_total = EXCLUDED.branches_total,
-                           branches_covered = EXCLUDED.branches_covered,
-                           branch_rate = EXCLUDED.branch_rate",
-                        &[
-                            run_id,
-                            &item.path,
-                            &item.lines_total,
-                            &item.lines_covered,
-                            &item.line_rate,
-                            &item.branches_total,
-                            &item.branches_covered,
-                            &item.branch_rate,
-                        ],
-                    )
-                    .await?;
-            }
+            let items = batch_items_json(items);
+            client
+                .execute(
+                    "INSERT INTO coverage_file (
+                       run_id, path, lines_total, lines_covered, line_rate,
+                       branches_total, branches_covered, branch_rate
+                     )
+                     SELECT
+                       $1, item.path, item.lines_total, item.lines_covered,
+                       item.line_rate, item.branches_total,
+                       item.branches_covered, item.branch_rate
+                     FROM jsonb_to_recordset($2) AS item(
+                       path TEXT, lines_total INTEGER, lines_covered INTEGER,
+                       line_rate DOUBLE PRECISION, branches_total INTEGER,
+                       branches_covered INTEGER, branch_rate DOUBLE PRECISION
+                     )
+                     ON CONFLICT (run_id, path) DO UPDATE SET
+                       lines_total = EXCLUDED.lines_total,
+                       lines_covered = EXCLUDED.lines_covered,
+                       line_rate = EXCLUDED.line_rate,
+                       branches_total = EXCLUDED.branches_total,
+                       branches_covered = EXCLUDED.branches_covered,
+                       branch_rate = EXCLUDED.branch_rate",
+                    &[run_id, &items],
+                )
+                .await?;
         }
         BatchReport::QualityFiles { scan_id, items } => {
-            for item in items {
-                client
-                    .execute(
-                        "INSERT INTO quality_file_metric (
-                           scan_id, path, name, fully_qualified_name, language,
-                           files, classes, functions, fields, lines, code_lines,
-                           comment_lines, blank_lines, complexity, cyclomatic,
-                           lcom4, duplicated_lines, finding_count, debt_minutes
-                         )
-                         VALUES (
-                           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-                           $12, $13, $14, $15, $16, $17, $18, $19
-                         )
-                         ON CONFLICT (scan_id, path) DO UPDATE SET
-                           name = EXCLUDED.name,
-                           fully_qualified_name = EXCLUDED.fully_qualified_name,
-                           language = EXCLUDED.language,
-                           files = EXCLUDED.files,
-                           classes = EXCLUDED.classes,
-                           functions = EXCLUDED.functions,
-                           fields = EXCLUDED.fields,
-                           lines = EXCLUDED.lines,
-                           code_lines = EXCLUDED.code_lines,
-                           comment_lines = EXCLUDED.comment_lines,
-                           blank_lines = EXCLUDED.blank_lines,
-                           complexity = EXCLUDED.complexity,
-                           cyclomatic = EXCLUDED.cyclomatic,
-                           lcom4 = EXCLUDED.lcom4,
-                           duplicated_lines = EXCLUDED.duplicated_lines,
-                           finding_count = EXCLUDED.finding_count,
-                           debt_minutes = EXCLUDED.debt_minutes",
-                        &[
-                            scan_id,
-                            &item.path,
-                            &item.name,
-                            &item.fully_qualified_name,
-                            &item.language,
-                            &item.files,
-                            &item.classes,
-                            &item.functions,
-                            &item.fields,
-                            &item.lines,
-                            &item.code_lines,
-                            &item.comment_lines,
-                            &item.blank_lines,
-                            &item.complexity,
-                            &item.cyclomatic,
-                            &item.lcom4,
-                            &item.duplicated_lines,
-                            &item.finding_count,
-                            &item.debt_minutes,
-                        ],
-                    )
-                    .await?;
-            }
+            let items = batch_items_json(items);
+            client
+                .execute(
+                    "INSERT INTO quality_file_metric (
+                       scan_id, path, name, fully_qualified_name, language,
+                       files, classes, functions, fields, lines, code_lines,
+                       comment_lines, blank_lines, complexity, cyclomatic,
+                       lcom4, duplicated_lines, finding_count, debt_minutes
+                     )
+                     SELECT
+                       $1, item.path, item.name, item.fully_qualified_name,
+                       item.language, item.files, item.classes, item.functions,
+                       item.fields, item.lines, item.code_lines,
+                       item.comment_lines, item.blank_lines, item.complexity,
+                       item.cyclomatic, item.lcom4, item.duplicated_lines,
+                       item.finding_count, item.debt_minutes
+                     FROM jsonb_to_recordset($2) AS item(
+                       path TEXT, name TEXT, fully_qualified_name TEXT,
+                       language TEXT, files INTEGER, classes INTEGER,
+                       functions INTEGER, fields INTEGER, lines INTEGER,
+                       code_lines INTEGER, comment_lines INTEGER,
+                       blank_lines INTEGER, complexity INTEGER,
+                       cyclomatic INTEGER, lcom4 INTEGER,
+                       duplicated_lines INTEGER, finding_count INTEGER,
+                       debt_minutes INTEGER
+                     )
+                     ON CONFLICT (scan_id, path) DO UPDATE SET
+                       name = EXCLUDED.name,
+                       fully_qualified_name = EXCLUDED.fully_qualified_name,
+                       language = EXCLUDED.language,
+                       files = EXCLUDED.files,
+                       classes = EXCLUDED.classes,
+                       functions = EXCLUDED.functions,
+                       fields = EXCLUDED.fields,
+                       lines = EXCLUDED.lines,
+                       code_lines = EXCLUDED.code_lines,
+                       comment_lines = EXCLUDED.comment_lines,
+                       blank_lines = EXCLUDED.blank_lines,
+                       complexity = EXCLUDED.complexity,
+                       cyclomatic = EXCLUDED.cyclomatic,
+                       lcom4 = EXCLUDED.lcom4,
+                       duplicated_lines = EXCLUDED.duplicated_lines,
+                       finding_count = EXCLUDED.finding_count,
+                       debt_minutes = EXCLUDED.debt_minutes",
+                    &[scan_id, &items],
+                )
+                .await?;
         }
         BatchReport::QualityFunctions { scan_id, items } => {
-            for item in items {
-                client
-                    .execute(
-                        "INSERT INTO quality_function_metric (
-                           scan_id, metric_key, path, symbol, start_line, language, lines,
-                           code_lines, complexity, cyclomatic, lcom4
-                         )
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                         ON CONFLICT (scan_id, metric_key) DO UPDATE SET
-                           path = EXCLUDED.path,
-                           symbol = EXCLUDED.symbol,
-                           start_line = EXCLUDED.start_line,
-                           language = EXCLUDED.language,
-                           lines = EXCLUDED.lines,
-                           code_lines = EXCLUDED.code_lines,
-                           complexity = EXCLUDED.complexity,
-                           cyclomatic = EXCLUDED.cyclomatic,
-                           lcom4 = EXCLUDED.lcom4",
-                        &[
-                            scan_id,
-                            &item.metric_key,
-                            &item.path,
-                            &item.symbol,
-                            &item.start_line,
-                            &item.language,
-                            &item.lines,
-                            &item.code_lines,
-                            &item.complexity,
-                            &item.cyclomatic,
-                            &item.lcom4,
-                        ],
-                    )
-                    .await?;
-            }
+            let items = batch_items_json(items);
+            client
+                .execute(
+                    "INSERT INTO quality_function_metric (
+                       scan_id, metric_key, path, symbol, start_line, language,
+                       lines, code_lines, complexity, cyclomatic, lcom4
+                     )
+                     SELECT
+                       $1, item.metric_key, item.path, item.symbol,
+                       item.start_line, item.language, item.lines,
+                       item.code_lines, item.complexity, item.cyclomatic,
+                       item.lcom4
+                     FROM jsonb_to_recordset($2) AS item(
+                       metric_key TEXT, path TEXT, symbol TEXT,
+                       start_line INTEGER, language TEXT, lines INTEGER,
+                       code_lines INTEGER, complexity INTEGER,
+                       cyclomatic INTEGER, lcom4 INTEGER
+                     )
+                     ON CONFLICT (scan_id, metric_key) DO UPDATE SET
+                       path = EXCLUDED.path,
+                       symbol = EXCLUDED.symbol,
+                       start_line = EXCLUDED.start_line,
+                       language = EXCLUDED.language,
+                       lines = EXCLUDED.lines,
+                       code_lines = EXCLUDED.code_lines,
+                       complexity = EXCLUDED.complexity,
+                       cyclomatic = EXCLUDED.cyclomatic,
+                       lcom4 = EXCLUDED.lcom4",
+                    &[scan_id, &items],
+                )
+                .await?;
         }
         BatchReport::QualitySources { scan_id, items } => {
-            for item in items {
-                client
-                    .execute(
-                        "WITH scan AS (
-                           SELECT repo, commit_sha
-                           FROM quality_scan
-                           WHERE scan_id = $1
-                         ), source AS (
-                           INSERT INTO quality_source (
-                             repo, commit_sha, path, language, content, content_sha256
-                           )
-                           VALUES (
-                             (SELECT repo FROM scan),
-                             (SELECT commit_sha FROM scan),
-                             $2, $3, $4, $5
-                           )
-                           ON CONFLICT (repo, commit_sha, path) DO UPDATE SET
-                             language = EXCLUDED.language,
-                             content = EXCLUDED.content,
-                             content_sha256 = EXCLUDED.content_sha256
-                           RETURNING repo, commit_sha, path
-                         )
-                         INSERT INTO quality_scan_source (scan_id, repo, commit_sha, path)
-                         SELECT $1, repo, commit_sha, path
-                         FROM source
-                         ON CONFLICT (scan_id, path) DO NOTHING",
-                        &[
-                            scan_id,
-                            &item.path,
-                            &item.language,
-                            &item.content,
-                            &item.content_sha256,
-                        ],
-                    )
-                    .await?;
-            }
+            let items = batch_items_json(items);
+            client
+                .execute(
+                    "WITH scan AS (
+                       SELECT repo, commit_sha
+                       FROM quality_scan
+                       WHERE scan_id = $1
+                     ), input AS (
+                       SELECT *
+                       FROM jsonb_to_recordset($2) AS item(
+                         path TEXT, language TEXT, content TEXT,
+                         content_sha256 TEXT
+                       )
+                     ), source AS (
+                       INSERT INTO quality_source (
+                         repo, commit_sha, path, language, content,
+                         content_sha256
+                       )
+                       SELECT
+                         scan.repo, scan.commit_sha, input.path,
+                         input.language, input.content,
+                         input.content_sha256
+                       FROM scan CROSS JOIN input
+                       ON CONFLICT (repo, commit_sha, path) DO UPDATE SET
+                         language = EXCLUDED.language,
+                         content = EXCLUDED.content,
+                         content_sha256 = EXCLUDED.content_sha256
+                       RETURNING repo, commit_sha, path
+                     )
+                     INSERT INTO quality_scan_source (
+                       scan_id, repo, commit_sha, path
+                     )
+                     SELECT $1, repo, commit_sha, path
+                     FROM source
+                     ON CONFLICT (scan_id, path) DO NOTHING",
+                    &[scan_id, &items],
+                )
+                .await?;
         }
         BatchReport::QualityFindings { scan_id, items } => {
-            for item in items {
-                client
-                    .execute(
-                        "INSERT INTO quality_finding (
-                           scan_id, fingerprint, path, start_line, end_line,
-                           start_byte, end_byte, tool, driver, rule_key, message,
-                           level, language, category, effort_minutes, value,
-                           value_delta, other_locations, properties
-                         )
-                         VALUES (
-                           $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-                           $12, $13, $14, $15, $16, $17, $18, $19
-                         )
-                         ON CONFLICT (scan_id, fingerprint) DO UPDATE SET
-                           path = EXCLUDED.path,
-                           start_line = EXCLUDED.start_line,
-                           end_line = EXCLUDED.end_line,
-                           start_byte = EXCLUDED.start_byte,
-                           end_byte = EXCLUDED.end_byte,
-                           message = EXCLUDED.message,
-                           level = EXCLUDED.level,
-                           effort_minutes = EXCLUDED.effort_minutes,
-                           value = EXCLUDED.value,
-                           value_delta = EXCLUDED.value_delta,
-                           other_locations = EXCLUDED.other_locations,
-                           properties = EXCLUDED.properties",
-                        &[
-                            scan_id,
-                            &item.fingerprint,
-                            &item.path,
-                            &item.start_line,
-                            &item.end_line,
-                            &item.start_byte,
-                            &item.end_byte,
-                            &item.tool,
-                            &item.driver,
-                            &item.rule_key,
-                            &item.message,
-                            &item.level,
-                            &item.language,
-                            &item.category,
-                            &item.effort_minutes,
-                            &item.value,
-                            &item.value_delta,
-                            &item.other_locations,
-                            &item.properties,
-                        ],
-                    )
-                    .await?;
-            }
+            let items = batch_items_json(items);
+            client
+                .execute(
+                    "INSERT INTO quality_finding (
+                       scan_id, fingerprint, path, start_line, end_line,
+                       start_byte, end_byte, tool, driver, rule_key, message,
+                       level, language, category, effort_minutes, value,
+                       value_delta, other_locations, properties
+                     )
+                     SELECT
+                       $1, item.fingerprint, item.path, item.start_line,
+                       item.end_line, item.start_byte, item.end_byte,
+                       item.tool, item.driver, item.rule_key, item.message,
+                       item.level, item.language, item.category,
+                       item.effort_minutes, item.value, item.value_delta,
+                       item.other_locations, item.properties
+                     FROM jsonb_to_recordset($2) AS item(
+                       fingerprint TEXT, path TEXT, start_line INTEGER,
+                       end_line INTEGER, start_byte INTEGER, end_byte INTEGER,
+                       tool TEXT, driver TEXT, rule_key TEXT, message TEXT,
+                       level TEXT, language TEXT, category TEXT,
+                       effort_minutes INTEGER, value INTEGER,
+                       value_delta INTEGER, other_locations JSONB,
+                       properties JSONB
+                     )
+                     ON CONFLICT (scan_id, fingerprint) DO UPDATE SET
+                       path = EXCLUDED.path,
+                       start_line = EXCLUDED.start_line,
+                       end_line = EXCLUDED.end_line,
+                       start_byte = EXCLUDED.start_byte,
+                       end_byte = EXCLUDED.end_byte,
+                       message = EXCLUDED.message,
+                       level = EXCLUDED.level,
+                       effort_minutes = EXCLUDED.effort_minutes,
+                       value = EXCLUDED.value,
+                       value_delta = EXCLUDED.value_delta,
+                       other_locations = EXCLUDED.other_locations,
+                       properties = EXCLUDED.properties",
+                    &[scan_id, &items],
+                )
+                .await?;
         }
     }
     Ok(())

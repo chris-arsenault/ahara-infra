@@ -320,6 +320,67 @@ async fn test_structured_engineering_report() {
 }
 
 #[tokio::test]
+async fn test_maximum_quality_function_batch() {
+    let (client, _container) = setup().await;
+    db::upsert_build(&client, &sample_report("run-600"))
+        .await
+        .unwrap();
+    let scan = QualityScanReport {
+        scan_id: "run-600:qlty".into(),
+        run_id: "run-600".into(),
+        repo: "chris-arsenault/test-repo".into(),
+        branch: "main".into(),
+        commit_sha: "def456".into(),
+        qlty_version: "0.641.0".into(),
+        analyzer_digest: "sha256:qlty".into(),
+        config_digest: "sha256:config".into(),
+        status: "pending".into(),
+        files: Some(1),
+        functions: Some(250),
+        code_lines: Some(2500),
+        complexity: Some(250),
+        cyclomatic: Some(500),
+        findings: Some(0),
+        debt_minutes: Some(0),
+        duplicated_lines: Some(0),
+        started_at: Some("2026-08-10T12:00:00Z".into()),
+    };
+    db::start_quality_scan(&client, &scan).await.unwrap();
+
+    let items = (0..250)
+        .map(|index| QualityFunctionMetric {
+            metric_key: format!("function-{index}"),
+            path: "src/example.rs".into(),
+            symbol: format!("function_{index}"),
+            start_line: Some(index + 1),
+            language: "rust".into(),
+            lines: 10,
+            code_lines: 8,
+            complexity: 1,
+            cyclomatic: 2,
+            lcom4: None,
+        })
+        .collect();
+    let batch = BatchReport::QualityFunctions {
+        scan_id: scan.scan_id,
+        items,
+    };
+    assert!(db::validate_batch(&batch).is_ok());
+    db::ingest_batch(&client, &batch).await.unwrap();
+
+    let count: i64 = client
+        .query_one(
+            "SELECT COUNT(*) FROM quality_function_metric
+             WHERE scan_id = 'run-600:qlty'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count, 250);
+}
+
+#[tokio::test]
 async fn test_legacy_history_migration_is_idempotent_and_catches_late_rows() {
     let (mut source, container) = setup().await;
     let host = container.get_host().await.unwrap();
