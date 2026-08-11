@@ -177,43 +177,38 @@ async fn create_database_if_missing(
     Ok(true)
 }
 
-async fn create_role_if_missing(
-    pg: &Client,
-    ssm: &SsmClient,
-    database_id: &str,
-    db_name: &str,
-    role_name: &str,
-    ssm_prefix: &str,
-) -> Result<bool, Error> {
-    let role_rows = pg
+async fn role_exists(pg: &Client, role_name: &str) -> Result<bool, Error> {
+    let rows = pg
         .query("SELECT 1 FROM pg_roles WHERE rolname = $1", &[&role_name])
         .await
         .map_err(|e| format!("Failed to query pg_roles: {e}"))?;
-    let role_exists = !role_rows.is_empty();
-    let credentials_complete = if role_exists {
-        let mut complete = true;
-        for suffix in ["username", "password", "database"] {
-            if ssm
-                .get_parameter()
-                .name(format!("{ssm_prefix}/{suffix}"))
-                .with_decryption(true)
-                .send()
-                .await
-                .is_err()
-            {
-                complete = false;
-            }
-        }
-        complete
-    } else {
-        false
-    };
-    if credentials_complete {
-        return Ok(false);
-    }
+    Ok(!rows.is_empty())
+}
 
-    let password = generate_password();
-    if role_exists {
+async fn role_credentials_complete(ssm: &SsmClient, ssm_prefix: &str) -> bool {
+    for suffix in ["username", "password", "database"] {
+        if ssm
+            .get_parameter()
+            .name(format!("{ssm_prefix}/{suffix}"))
+            .with_decryption(true)
+            .send()
+            .await
+            .is_err()
+        {
+            return false;
+        }
+    }
+    true
+}
+
+async fn set_role_password(
+    pg: &Client,
+    database_id: &str,
+    role_name: &str,
+    password: &str,
+    exists: bool,
+) -> Result<(), Error> {
+    if exists {
         info!(
             database_id,
             role = role_name,
@@ -232,7 +227,16 @@ async fn create_role_if_missing(
         .await
         .map_err(|e| format!("Failed to CREATE ROLE {role_name}: {e}"))?;
     }
+    Ok(())
+}
 
+async fn publish_role_credentials(
+    ssm: &SsmClient,
+    db_name: &str,
+    role_name: &str,
+    password: &str,
+    ssm_prefix: &str,
+) -> Result<(), Error> {
     ssm.put_parameter()
         .name(format!("{ssm_prefix}/username"))
         .r#type(aws_sdk_ssm::types::ParameterType::String)
@@ -244,7 +248,7 @@ async fn create_role_if_missing(
     ssm.put_parameter()
         .name(format!("{ssm_prefix}/password"))
         .r#type(aws_sdk_ssm::types::ParameterType::SecureString)
-        .value(&password)
+        .value(password)
         .overwrite(true)
         .send()
         .await?;
@@ -256,6 +260,25 @@ async fn create_role_if_missing(
         .overwrite(true)
         .send()
         .await?;
+    Ok(())
+}
+
+async fn create_role_if_missing(
+    pg: &Client,
+    ssm: &SsmClient,
+    database_id: &str,
+    db_name: &str,
+    role_name: &str,
+    ssm_prefix: &str,
+) -> Result<bool, Error> {
+    let exists = role_exists(pg, role_name).await?;
+    if exists && role_credentials_complete(ssm, ssm_prefix).await {
+        return Ok(false);
+    }
+
+    let password = generate_password();
+    set_role_password(pg, database_id, role_name, &password, exists).await?;
+    publish_role_credentials(ssm, db_name, role_name, &password, ssm_prefix).await?;
 
     info!(
         database_id,
