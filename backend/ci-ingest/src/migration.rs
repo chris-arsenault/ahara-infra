@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::Serialize;
-use tokio_postgres::Client;
+use tokio_postgres::{Client, Transaction};
 
 const BATCH_SIZE: i64 = 500;
 
@@ -26,6 +26,88 @@ pub struct LegacyMigrationSummary {
     pub inserted_rows: i64,
     pub verified_rows: i64,
     pub destination_rows: i64,
+}
+
+async fn insert_builds(
+    destination: &Transaction<'_>,
+    builds: &[LegacyBuild],
+) -> Result<u64, tokio_postgres::Error> {
+    let repos = builds
+        .iter()
+        .map(|build| build.repo.as_str())
+        .collect::<Vec<_>>();
+    let workflows = builds
+        .iter()
+        .map(|build| build.workflow.as_str())
+        .collect::<Vec<_>>();
+    let statuses = builds
+        .iter()
+        .map(|build| build.status.as_str())
+        .collect::<Vec<_>>();
+    let branches = builds
+        .iter()
+        .map(|build| build.branch.as_str())
+        .collect::<Vec<_>>();
+    let commit_shas = builds
+        .iter()
+        .map(|build| build.commit_sha.as_str())
+        .collect::<Vec<_>>();
+    let run_ids = builds
+        .iter()
+        .map(|build| build.run_id.as_str())
+        .collect::<Vec<_>>();
+    let run_urls = builds
+        .iter()
+        .map(|build| build.run_url.as_deref())
+        .collect::<Vec<_>>();
+    let duration_seconds = builds
+        .iter()
+        .map(|build| build.duration_seconds)
+        .collect::<Vec<_>>();
+    let lint_passed = builds
+        .iter()
+        .map(|build| build.lint_passed)
+        .collect::<Vec<_>>();
+    let test_passed = builds
+        .iter()
+        .map(|build| build.test_passed)
+        .collect::<Vec<_>>();
+    let created_at = builds
+        .iter()
+        .map(|build| build.created_at)
+        .collect::<Vec<_>>();
+
+    destination
+        .execute(
+            "INSERT INTO ci_run (
+               repo, workflow, status, branch, commit_sha, run_id, run_url,
+               duration_seconds, lint_passed, test_passed, created_at, updated_at
+             )
+             SELECT repo, workflow, status, branch, commit_sha, run_id, run_url,
+                    duration_seconds, lint_passed, test_passed, created_at, created_at
+             FROM UNNEST(
+               $1::text[], $2::text[], $3::text[], $4::text[], $5::text[], $6::text[],
+               $7::text[], $8::integer[], $9::boolean[], $10::boolean[], $11::timestamptz[]
+             ) AS rows(
+               repo, workflow, status, branch, commit_sha, run_id, run_url,
+               duration_seconds, lint_passed, test_passed, created_at
+             )
+             ON CONFLICT (run_id) DO NOTHING",
+            &[
+                &repos,
+                &workflows,
+                &statuses,
+                &branches,
+                &commit_shas,
+                &run_ids,
+                &run_urls,
+                &duration_seconds,
+                &lint_passed,
+                &test_passed,
+                &created_at,
+            ],
+        )
+        .await
 }
 
 pub async fn migrate_legacy_builds(
@@ -83,31 +165,7 @@ pub async fn migrate_legacy_builds(
         last_id = builds.last().expect("non-empty legacy batch").id;
 
         let destination_tx = destination.transaction().await?;
-        for build in &builds {
-            inserted_rows += destination_tx
-                .execute(
-                    "INSERT INTO ci_run (
-                       repo, workflow, status, branch, commit_sha, run_id, run_url,
-                       duration_seconds, lint_passed, test_passed, created_at, updated_at
-                     )
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
-                     ON CONFLICT (run_id) DO NOTHING",
-                    &[
-                        &build.repo,
-                        &build.workflow,
-                        &build.status,
-                        &build.branch,
-                        &build.commit_sha,
-                        &build.run_id,
-                        &build.run_url,
-                        &build.duration_seconds,
-                        &build.lint_passed,
-                        &build.test_passed,
-                        &build.created_at,
-                    ],
-                )
-                .await? as i64;
-        }
+        inserted_rows += insert_builds(&destination_tx, &builds).await? as i64;
         destination_tx.commit().await?;
 
         let run_ids = builds
