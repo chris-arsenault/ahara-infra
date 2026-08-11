@@ -1,5 +1,5 @@
 use aws_sdk_ssm::Client as SsmClient;
-use ci_ingest::migration::migrate_legacy_builds;
+use ci_ingest::migration::{migrate_legacy_builds, LegacyMigrationSummary};
 use lambda_runtime::{service_fn, Error, LambdaEvent};
 use serde_json::{json, Value};
 use std::env;
@@ -24,6 +24,7 @@ fn make_tls_connector() -> tokio_postgres_rustls::MakeRustlsConnect {
 }
 
 async fn fetch_credentials(ssm: &SsmClient, prefix: &str) -> Result<(String, String), Error> {
+    info!(prefix, "Fetching database credentials");
     let user = ssm
         .get_parameter()
         .name(format!("{prefix}/username"))
@@ -43,6 +44,7 @@ async fn fetch_credentials(ssm: &SsmClient, prefix: &str) -> Result<(String, Str
         .and_then(|parameter| parameter.value())
         .ok_or("database password parameter is empty")?
         .to_string();
+    info!(prefix, "Database credentials loaded");
     Ok((user, password))
 }
 
@@ -53,9 +55,11 @@ async fn connect_source(ssm: &SsmClient) -> Result<Client, Error> {
     let prefix = env::var("SOURCE_DB_SSM_PREFIX")?;
     let (user, password) = fetch_credentials(ssm, &prefix).await?;
     let connstr = format!(
-        "host={host} port={port} user={user} password={password} dbname={db_name} sslmode=require"
+        "host={host} port={port} user={user} password={password} dbname={db_name} sslmode=require connect_timeout=15"
     );
+    info!(database = db_name, "Connecting to legacy RDS");
     let (client, connection) = tokio_postgres::connect(&connstr, make_tls_connector()).await?;
+    info!(database = db_name, "Connected to legacy RDS");
     tokio::spawn(async move {
         if let Err(error) = connection.await {
             error!(%error, "Legacy RDS connection failed");
@@ -70,9 +74,12 @@ async fn connect_destination(ssm: &SsmClient) -> Result<Client, Error> {
     let db_name = env::var("DESTINATION_DB_NAME")?;
     let prefix = env::var("DESTINATION_DB_SSM_PREFIX")?;
     let (user, password) = fetch_credentials(ssm, &prefix).await?;
-    let connstr =
-        format!("host={host} port={port} user={user} password={password} dbname={db_name}");
+    let connstr = format!(
+        "host={host} port={port} user={user} password={password} dbname={db_name} connect_timeout=15"
+    );
+    info!(database = db_name, "Connecting to TrueNAS PostgreSQL");
     let (client, connection) = tokio_postgres::connect(&connstr, NoTls).await?;
+    info!(database = db_name, "Connected to TrueNAS PostgreSQL");
     tokio::spawn(async move {
         if let Err(error) = connection.await {
             error!(%error, "TrueNAS PostgreSQL connection failed");
@@ -81,20 +88,26 @@ async fn connect_destination(ssm: &SsmClient) -> Result<Client, Error> {
     Ok(client)
 }
 
-async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
-    let phase = event
+fn migration_phase(event: &LambdaEvent<Value>) -> &str {
+    event
         .payload
         .get("phase")
         .and_then(Value::as_str)
-        .unwrap_or("manual");
+        .unwrap_or("manual")
+}
+
+async fn connect_databases(phase: &str) -> Result<(Client, Client), Error> {
     info!(phase, "Starting legacy CI history migration");
 
     let aws_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
+    info!(phase, "AWS configuration loaded");
     let ssm = SsmClient::new(&aws_config);
-    let mut source = connect_source(&ssm).await?;
-    let mut destination = connect_destination(&ssm).await?;
-    let summary = migrate_legacy_builds(&mut source, &mut destination).await?;
+    let source = connect_source(&ssm).await?;
+    let destination = connect_destination(&ssm).await?;
+    Ok((source, destination))
+}
 
+fn completed_response(phase: &str, summary: &LegacyMigrationSummary) -> Value {
     info!(
         phase,
         source_rows = summary.source_rows,
@@ -103,14 +116,25 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
         destination_rows = summary.destination_rows,
         "Legacy CI history migration complete"
     );
-    Ok(json!({
+    json!({
         "phase": phase,
         "status": "complete",
         "source_rows": summary.source_rows,
         "inserted_rows": summary.inserted_rows,
         "verified_rows": summary.verified_rows,
         "destination_rows": summary.destination_rows,
-    }))
+    })
+}
+
+async fn run_migration(phase: &str) -> Result<Value, Error> {
+    let (mut source, mut destination) = connect_databases(phase).await?;
+    info!(phase, "Copying legacy CI history");
+    let summary = migrate_legacy_builds(&mut source, &mut destination).await?;
+    Ok(completed_response(phase, &summary))
+}
+
+async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
+    run_migration(migration_phase(&event)).await
 }
 
 #[tokio::main]
