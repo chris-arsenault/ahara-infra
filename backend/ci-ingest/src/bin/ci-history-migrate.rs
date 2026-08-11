@@ -115,6 +115,10 @@ async fn handler(event: LambdaEvent<Value>) -> Result<Value, Error> {
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     tracing_subscriber::fmt()
         .json()
         .with_env_filter(
