@@ -228,5 +228,6 @@ module "ahara_trust_machine_role" {
   # This apply creates the entry role, so its ARN is passed rather than read
   # back from the parameter the module would otherwise look up — that
   # parameter does not exist yet on a first apply.
-  entry_role_arn = aws_iam_role.ahara_machines_entry[0].arn
+  entry_role_arn               = aws_iam_role.ahara_machines_entry[0].arn
+  read_entry_role_arn_from_ssm = false
 }

@@ -42,15 +42,21 @@ variable "entry_role_arn" {
   default     = null
 }
 
+variable "read_entry_role_arn_from_ssm" {
+  description = "Whether to read the Roles Anywhere entry role ARN from SSM. Set false when entry_role_arn comes from a resource created in the same apply."
+  type        = bool
+  default     = true
+}
+
 data "aws_ssm_parameter" "entry_role_arn" {
-  count = var.entry_role_arn == null ? 1 : 0
+  count = var.read_entry_role_arn_from_ssm ? 1 : 0
 
   name = "/ahara/machines/entry-role-arn"
 }
 
 locals {
   entry_role_arn = (
-    var.entry_role_arn != null ? var.entry_role_arn : data.aws_ssm_parameter.entry_role_arn[0].value
+    var.read_entry_role_arn_from_ssm ? data.aws_ssm_parameter.entry_role_arn[0].value : var.entry_role_arn
   )
 
   role_name   = "ahara-machine-${var.prefix}-${var.name}"
