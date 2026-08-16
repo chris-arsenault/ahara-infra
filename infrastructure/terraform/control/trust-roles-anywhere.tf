@@ -217,13 +217,24 @@ data "aws_iam_policy_document" "ahara_trust_route53" {
   }
 }
 
+// What this appliance may do with credentials: answer DNS-01 challenges, and
+// keep its own secret store recoverable. Nothing else.
+data "aws_iam_policy_document" "ahara_trust_machine" {
+  count = local.ahara_machines_count
+
+  source_policy_documents = [
+    data.aws_iam_policy_document.ahara_trust_route53[0].json,
+    data.aws_iam_policy_document.ahara_trust_secret_backup[0].json,
+  ]
+}
+
 module "ahara_trust_machine_role" {
   count  = local.ahara_machines_count
   source = "../modules/machine-role"
 
   prefix      = "appliance"
   name        = "trust"
-  policy_json = data.aws_iam_policy_document.ahara_trust_route53[0].json
+  policy_json = data.aws_iam_policy_document.ahara_trust_machine[0].json
 
   # This apply creates the entry role, so its ARN is passed rather than read
   # back from the parameter the module would otherwise look up — that

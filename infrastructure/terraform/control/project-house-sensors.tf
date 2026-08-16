@@ -24,4 +24,9 @@ module "project_house_sensors" {
     "ahara/house-sensors/*",
     "ahara/machines/workloads/house-sensors/*",
   ]
+
+  # Its collectors write to the household InfluxDB and authenticate to the
+  # observability ingest gateway, both of which are that project's parameters.
+  # The only cross-project read in the estate.
+  truenas_workload_cross_project_parameter_prefixes = ["observability"]
 }

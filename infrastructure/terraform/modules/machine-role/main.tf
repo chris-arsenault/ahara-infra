@@ -20,8 +20,15 @@ variable "name" {
 }
 
 variable "policy_json" {
-  description = "What this machine may do once it has credentials."
+  description = "What this machine may do once it has credentials, beyond reading its own project's parameters. Unset for a workload that only reads its configuration."
   type        = string
+  default     = null
+}
+
+variable "cross_project_parameter_prefixes" {
+  description = "Other projects whose parameters this workload reads, as bare project names. A security decision, so it is declared where the role is."
+  type        = list(string)
+  default     = []
 }
 
 variable "permissions_boundary_arn" {
@@ -99,9 +106,81 @@ resource "aws_iam_role" "this" {
 }
 
 resource "aws_iam_role_policy" "runtime" {
+  count = var.policy_json == null ? 0 : 1
+
   name   = "${local.role_name}-runtime"
   role   = aws_iam_role.this.id
   policy = var.policy_json
+}
+
+# What this workload may read, derived from what it is.
+#
+# Parameters are already filed by project — /ahara/<project>/... and
+# /ahara/truenas-db/<project>/... — and a workload id is
+# spiffe://ahara/<prefix>/<name> where the prefix is that same project. So the
+# namespace is the grant and nobody writes a list of parameters (ahara-trust
+# ADR-0002). Reading another project's parameters is declared, because it is a
+# decision rather than a consequence.
+#
+# The namespace being the grant makes it load-bearing: a parameter filed under
+# the wrong project is readable by the wrong workloads, and nothing here will
+# say so.
+data "aws_caller_identity" "current" {}
+data "aws_region" "current" {}
+data "aws_partition" "current" {}
+
+locals {
+  parameter_arn_prefix = join(":", [
+    "arn",
+    data.aws_partition.current.partition,
+    "ssm",
+    data.aws_region.current.region,
+    data.aws_caller_identity.current.account_id,
+    "parameter",
+  ])
+
+  readable_parameters = concat(
+    [
+      "${local.parameter_arn_prefix}/ahara/${var.prefix}/*",
+      "${local.parameter_arn_prefix}/ahara/truenas-db/${var.prefix}/*",
+    ],
+    [for p in var.cross_project_parameter_prefixes : "${local.parameter_arn_prefix}/ahara/${p}/*"],
+  )
+}
+
+resource "aws_iam_role_policy" "parameters" {
+  name = "${local.role_name}-parameters"
+  role = aws_iam_role.this.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadOwnProjectParameters"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:GetParametersByPath",
+        ]
+        Resource = local.readable_parameters
+      },
+      # These are SecureString parameters, so reading one is also a KMS
+      # decrypt. Scoped to calls SSM makes on the workload's behalf, so the
+      # grant is not usable against anything else the key protects.
+      {
+        Sid      = "DecryptThoseParameters"
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "ssm.${data.aws_region.current.region}.amazonaws.com"
+          }
+        }
+      },
+    ]
+  })
 }
 
 # Read by the deploy tooling so a workload learns which role to assume
