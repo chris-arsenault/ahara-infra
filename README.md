@@ -28,6 +28,9 @@ All three layers share a single Terraform state (`ahara/infra.tfstate` in
 Consumer projects depend on:
 - Tag-based network lookups (VPC, ALB, SGs) via `ahara-tf-patterns/modules/platform-context`
 - SSM under `/ahara/cognito/*`, `/ahara/rds/*`, `/ahara/db/<project>/*`
+- Public Roles Anywhere discovery identifiers under `/ahara/machines/*` for
+  declared appliance and container workloads. The trust appliance's public CA
+  is registered here; its private key never enters AWS or Terraform state.
 - Route53 zone `ahara.io.`
 
 The separate `ahara-vpn` stack owns the WireGuard endpoint, tunnel identities,

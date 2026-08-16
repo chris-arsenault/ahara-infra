@@ -46,7 +46,7 @@ infrastructure/terraform/
 └── services/       # Cognito, RDS, auth-trigger, db-migrate, CORS,
                     # CI-ingest, komodo-proxy, observability, OG server
 backend/            # Rust Lambda workspace (7 crates)
-db/migrations/      # Platform-level migrations (ci_builds, etc.)
+db/migrations/      # Platform-level migrations
 scripts/deploy.sh   # cargo lambda build + terraform apply
 ```
 
@@ -75,7 +75,7 @@ No circular dependencies. Cross-layer references use direct module outputs
 - `/ahara/rds/*` — endpoint, address, port, master creds, SG id
 - `/ahara/db/<project>/*` — per-project app creds (published by db-migrate Lambda)
 - `/ahara/auth-trigger/clients/*` — client ID → project key map (written by consumers)
-- `/ahara/sonarqube/*`, `/ahara/truenas/*`, `/ahara/komodo/*` — operational params
+- `/ahara/truenas-db/*`, `/ahara/truenas/*`, `/ahara/komodo/*` — operational params
 - `/ahara/machines/*` — Roles Anywhere discovery: trust anchor, profile, and entry role ARNs. All public identifiers. The certificate authority runs on the trust appliance (the `ahara-trust` repository); no key material for it exists in AWS or in Terraform state
 - `/ahara/og-server/*` — OG Lambda artifact location
 
