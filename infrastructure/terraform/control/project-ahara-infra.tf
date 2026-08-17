@@ -60,6 +60,10 @@ module "ahara_infra_project" {
     "acm-dns",
     "secrets-manager",
     "security-audit",
+    # The control plane now owns a key: the trust appliance's secret store is
+    # backed up under one, and creating it means tagging it, because the
+    # provider stamps Project and ManagedBy on every resource.
+    "kms-admin",
   ]
 }
 

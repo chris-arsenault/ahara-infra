@@ -17,15 +17,22 @@
 # by another name.
 # =============================================================================
 
-# Untagged, because the role that applies this stack may create a key but not
-# tag one, and widening that grant to carry a Name the alias below already
-# supplies would be a poor trade.
 resource "aws_kms_key" "ahara_trust_secrets" {
   count = local.ahara_machines_count
 
   description             = "Wraps the trust appliance's stored secrets in S3"
   enable_key_rotation     = true
   deletion_window_in_days = 30
+
+  tags = {
+    Name = "ahara-trust-secrets"
+  }
+
+  # Creating a key means tagging one, because the provider stamps Project and
+  # ManagedBy on everything. The role running this apply gains kms:TagResource
+  # from the kms-admin policy attached in project-ahara-infra.tf, so the grant
+  # has to exist before the key does.
+  depends_on = [module.ahara_infra_project]
 }
 
 resource "aws_kms_alias" "ahara_trust_secrets" {
