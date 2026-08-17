@@ -105,12 +105,50 @@ resource "aws_iam_role" "this" {
   tags                 = local.tags
 }
 
-resource "aws_iam_role_policy" "runtime" {
-  count = var.policy_json == null ? 0 : 1
+# One policy, always created, holding what this machine may read and whatever
+# else the caller grants it.
+#
+# The caller's document is merged rather than attached separately, because a
+# count that depends on whether it was supplied is a count Terraform cannot
+# resolve: a policy built from a resource that does not exist yet — a bucket or
+# a key created in the same apply — is unknown at plan time, and so is whether
+# it is null. Merging keeps the conditional in an argument, where an unknown is
+# allowed.
+data "aws_iam_policy_document" "runtime" {
+  source_policy_documents = var.policy_json == null ? [] : [var.policy_json]
 
+  statement {
+    sid    = "ReadOwnProjectParameters"
+    effect = "Allow"
+    actions = [
+      "ssm:GetParameter",
+      "ssm:GetParameters",
+      "ssm:GetParametersByPath",
+    ]
+    resources = local.readable_parameters
+  }
+
+  # These are SecureString parameters, so reading one is also a KMS decrypt.
+  # Scoped to calls SSM makes on the workload's behalf, so the grant is not
+  # usable against anything else the key protects.
+  statement {
+    sid       = "DecryptThoseParameters"
+    effect    = "Allow"
+    actions   = ["kms:Decrypt"]
+    resources = ["*"]
+
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["ssm.${data.aws_region.current.region}.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy" "runtime" {
   name   = "${local.role_name}-runtime"
   role   = aws_iam_role.this.id
-  policy = var.policy_json
+  policy = data.aws_iam_policy_document.runtime.json
 }
 
 # What this workload may read, derived from what it is.
@@ -146,41 +184,6 @@ locals {
     ],
     [for p in var.cross_project_parameter_prefixes : "${local.parameter_arn_prefix}/ahara/${p}/*"],
   )
-}
-
-resource "aws_iam_role_policy" "parameters" {
-  name = "${local.role_name}-parameters"
-  role = aws_iam_role.this.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "ReadOwnProjectParameters"
-        Effect = "Allow"
-        Action = [
-          "ssm:GetParameter",
-          "ssm:GetParameters",
-          "ssm:GetParametersByPath",
-        ]
-        Resource = local.readable_parameters
-      },
-      # These are SecureString parameters, so reading one is also a KMS
-      # decrypt. Scoped to calls SSM makes on the workload's behalf, so the
-      # grant is not usable against anything else the key protects.
-      {
-        Sid      = "DecryptThoseParameters"
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt"]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "kms:ViaService" = "ssm.${data.aws_region.current.region}.amazonaws.com"
-          }
-        }
-      },
-    ]
-  })
 }
 
 # Read by the deploy tooling so a workload learns which role to assume
