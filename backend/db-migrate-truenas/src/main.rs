@@ -230,13 +230,47 @@ async fn set_role_password(
     Ok(())
 }
 
+/// Percent-encodes the characters that would otherwise end a URL's userinfo
+/// field early. A generated password containing `@` or `:` would silently
+/// produce a connection string pointing at the wrong host.
+fn encode_userinfo(value: &str) -> String {
+    value
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 async fn publish_role_credentials(
     ssm: &SsmClient,
     db_name: &str,
     role_name: &str,
     password: &str,
     ssm_prefix: &str,
+    host: &str,
+    port: &str,
 ) -> Result<(), Error> {
+    // The assembled connection string, so a consumer fetches one value rather
+    // than three and assembles it itself. A workload that builds this from
+    // parts has to have the parts in its environment at the moment its config
+    // is interpolated, which a container fetching its own secrets does not
+    // (ahara-trust ADR-0002).
+    ssm.put_parameter()
+        .name(format!("{ssm_prefix}/url"))
+        .r#type(aws_sdk_ssm::types::ParameterType::SecureString)
+        .value(format!(
+            "postgres://{}:{}@{host}:{port}/{db_name}",
+            encode_userinfo(role_name),
+            encode_userinfo(password),
+        ))
+        .overwrite(true)
+        .send()
+        .await?;
+
     ssm.put_parameter()
         .name(format!("{ssm_prefix}/username"))
         .r#type(aws_sdk_ssm::types::ParameterType::String)
@@ -263,6 +297,54 @@ async fn publish_role_credentials(
     Ok(())
 }
 
+/// Publishes the assembled URL for a role that already has credentials.
+///
+/// Nothing here rotates: the password is the one already published, so a
+/// consumer holding it keeps working and gains a URL it can fetch whole.
+async fn backfill_url(
+    ssm: &SsmClient,
+    db_name: &str,
+    role_name: &str,
+    ssm_prefix: &str,
+) -> Result<(), Error> {
+    if ssm
+        .get_parameter()
+        .name(format!("{ssm_prefix}/url"))
+        .send()
+        .await
+        .is_ok()
+    {
+        return Ok(());
+    }
+
+    let password = ssm
+        .get_parameter()
+        .name(format!("{ssm_prefix}/password"))
+        .with_decryption(true)
+        .send()
+        .await?
+        .parameter()
+        .and_then(|p| p.value())
+        .ok_or("published password has no value")?
+        .to_string();
+
+    let (host, port) = postgres_env()?;
+    ssm.put_parameter()
+        .name(format!("{ssm_prefix}/url"))
+        .r#type(aws_sdk_ssm::types::ParameterType::SecureString)
+        .value(format!(
+            "postgres://{}:{}@{host}:{port}/{db_name}",
+            encode_userinfo(role_name),
+            encode_userinfo(&password),
+        ))
+        .overwrite(true)
+        .send()
+        .await?;
+
+    info!(role = role_name, "Assembled URL published to SSM");
+    Ok(())
+}
+
 async fn create_role_if_missing(
     pg: &Client,
     ssm: &SsmClient,
@@ -273,12 +355,17 @@ async fn create_role_if_missing(
 ) -> Result<bool, Error> {
     let exists = role_exists(pg, role_name).await?;
     if exists && role_credentials_complete(ssm, ssm_prefix).await {
+        // A database provisioned before the assembled URL existed has working
+        // credentials and no url parameter. Write it from what is already
+        // published rather than rotating a password every consumer holds.
+        backfill_url(ssm, db_name, role_name, ssm_prefix).await?;
         return Ok(false);
     }
 
     let password = generate_password();
     set_role_password(pg, database_id, role_name, &password, exists).await?;
-    publish_role_credentials(ssm, db_name, role_name, &password, ssm_prefix).await?;
+    let (host, port) = postgres_env()?;
+    publish_role_credentials(ssm, db_name, role_name, &password, ssm_prefix, &host, &port).await?;
 
     info!(
         database_id,
