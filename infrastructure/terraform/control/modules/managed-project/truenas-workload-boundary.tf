@@ -127,3 +127,9 @@ resource "aws_iam_policy" "truenas_workload_boundary" {
   policy = data.aws_iam_policy_document.truenas_workload_boundary.json
   tags   = local.tags
 }
+
+# Read by a machine-role created in this stack rather than in the project's own
+# repository, which is how a project with no Terraform of its own gets one.
+output "truenas_workload_boundary_arn" {
+  value = aws_iam_policy.truenas_workload_boundary.arn
+}
