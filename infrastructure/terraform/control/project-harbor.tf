@@ -24,5 +24,7 @@ module "project_harbor" {
     "ahara/cognito/*",
     "ahara/auth-trigger/clients/*",
     "ahara/harbor/*",
+    # Its own machine roles publish their ARNs here for the deploy to read.
+    "ahara/machines/workloads/harbor/*",
   ]
 }

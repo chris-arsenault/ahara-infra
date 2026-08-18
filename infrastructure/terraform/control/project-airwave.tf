@@ -18,4 +18,9 @@ module "project_airwave" {
     "komodo-deploy",
     "fdroid-publish",
   ]
+
+  ssm_additional_parameter_paths = [
+    # Its own machine role publishes its ARN here for the deploy to read.
+    "ahara/machines/workloads/airwave/*",
+  ]
 }

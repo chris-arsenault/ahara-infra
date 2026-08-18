@@ -25,5 +25,7 @@ module "project_sulion" {
     "ahara/cognito/*",
     "ahara/auth-trigger/clients/*",
     "ahara/sulion/*",
+    # Its own machine roles publish their ARNs here for the deploy to read.
+    "ahara/machines/workloads/sulion/*",
   ]
 }
