@@ -17,6 +17,10 @@ module "project_airwave" {
     "alb-target-group",
     "komodo-deploy",
     "fdroid-publish",
+    # Its machine role publishes its ARN to SSM, which is what the paths below
+    # permit — and they permit nothing without this module, since that is what
+    # consumes them. harbor and sulion already carry it.
+    "ssm-write",
   ]
 
   ssm_additional_parameter_paths = [
