@@ -139,7 +139,8 @@ data "aws_iam_policy_document" "this" {
     ]
     resources = [
       "arn:aws:apigateway:us-east-1::/apis/*",
-      "arn:aws:apigateway:us-east-1::/restapis/*"
+      "arn:aws:apigateway:us-east-1::/restapis/*",
+      "arn:aws:apigateway:us-east-1::/tags/arn%3Aaws%3Aapigateway%3Aus-east-1%3A%3A%2Fv2%2Fapis%2F*"
     ]
   }
 
