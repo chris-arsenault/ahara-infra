@@ -88,3 +88,26 @@ resource "aws_iam_role_policy" "ahara_infra_platform_migrations" {
     }]
   })
 }
+
+# Route53 Domains does not support resource-level IAM scoping. Keep registrar
+# mutations on the central platform deployer rather than granting a product
+# repository the ability to alter every domain registered in the account.
+resource "aws_iam_role_policy" "ahara_infra_domain_delegation" {
+  name = "ahara-domain-delegation"
+  role = module.ahara_infra_project.role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ManageRegisteredDomainDelegation"
+      Effect = "Allow"
+      Action = [
+        "route53domains:GetDomainDetail",
+        "route53domains:GetOperationDetail",
+        "route53domains:ListTagsForDomain",
+        "route53domains:UpdateDomainNameservers",
+        "route53domains:UpdateTagsForDomain",
+      ]
+      Resource = "*"
+    }]
+  })
+}
