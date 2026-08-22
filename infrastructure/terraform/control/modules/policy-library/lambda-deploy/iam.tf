@@ -128,23 +128,6 @@ data "aws_iam_policy_document" "this" {
   }
 
   statement {
-    sid    = "ApiGatewayCrud"
-    effect = "Allow"
-    actions = [
-      "apigateway:GET",
-      "apigateway:POST",
-      "apigateway:PUT",
-      "apigateway:PATCH",
-      "apigateway:DELETE"
-    ]
-    resources = [
-      "arn:aws:apigateway:us-east-1::/apis/*",
-      "arn:aws:apigateway:us-east-1::/restapis/*",
-      "arn:aws:apigateway:us-east-1::/tags/arn%3Aaws%3Aapigateway%3Aus-east-1%3A%3A%2Fv2%2Fapis%2F*"
-    ]
-  }
-
-  statement {
     sid     = "AttachBasicExecPolicy"
     effect  = "Allow"
     actions = ["iam:AttachRolePolicy"]
