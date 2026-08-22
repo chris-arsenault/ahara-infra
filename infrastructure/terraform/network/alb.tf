@@ -1,6 +1,7 @@
 resource "aws_lb" "reverse_proxy" {
   name               = "${local.prefix}-alb"
   load_balancer_type = "application"
+  idle_timeout       = 300
   security_groups    = [aws_security_group.alb.id]
   subnets = [
     aws_subnet.public.id,

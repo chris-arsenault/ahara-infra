@@ -131,6 +131,12 @@ module "sns" {
   account_id = var.account_id
 }
 
+module "sqs" {
+  source     = "../policy-library/sqs"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 module "ses" {
   source                          = "../policy-library/ses"
   prefix                          = var.prefix
@@ -260,6 +266,7 @@ locals {
     "db-migrate"                  = module.db-migrate.policy_json
     "rds"                         = module.rds.policy_json
     "sns"                         = module.sns.policy_json
+    "sqs"                         = module.sqs.policy_json
     "ses"                         = module.ses.policy_json
     "s3-private-storage"          = module.s3_private_storage.policy_json
     "s3-bucket-policy"            = module.s3_bucket_policy.policy_json

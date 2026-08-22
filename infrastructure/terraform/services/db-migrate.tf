@@ -21,6 +21,7 @@ variable "migration_projects" {
     tastebase         = { db_name = "tastebase" }
     "ahara-access"    = { db_name = "ahara_access" }
     "ahara-business"  = { db_name = "ahara_business" }
+    "glass-frontier"  = { db_name = "glass_frontier" }
     "tsonu-music"     = { db_name = "tsonu_music" }
   }
 }

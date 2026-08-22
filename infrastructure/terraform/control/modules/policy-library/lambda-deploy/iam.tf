@@ -10,6 +10,7 @@ data "aws_iam_policy_document" "this" {
       "lambda:PutFunctionConcurrency",
       "lambda:DeleteFunctionConcurrency",
       "lambda:Get*",
+      "lambda:InvokeFunction",
       "lambda:PublishVersion",
       "lambda:CreateAlias",
       "lambda:UpdateAlias",
@@ -60,6 +61,56 @@ data "aws_iam_policy_document" "this" {
       "lambda:ListAliases"
     ]
     resources = ["*"]
+  }
+
+  statement {
+    sid    = "LambdaEventSourceMappings"
+    effect = "Allow"
+    actions = [
+      "lambda:CreateEventSourceMapping",
+      "lambda:DeleteEventSourceMapping",
+      "lambda:GetEventSourceMapping",
+      "lambda:UpdateEventSourceMapping",
+    ]
+    resources = ["*"]
+
+    condition {
+      test     = "ArnLike"
+      variable = "lambda:FunctionArn"
+      values   = ["arn:aws:lambda:*:${var.account_id}:function:${var.prefix}-*"]
+    }
+  }
+
+  statement {
+    sid     = "LambdaEventSourceMappingTags"
+    effect  = "Allow"
+    actions = ["lambda:TagResource"]
+    resources = [
+      "arn:aws:lambda:*:${var.account_id}:event-source-mapping:*"
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestTag/Project"
+      values   = [var.prefix]
+    }
+  }
+
+  statement {
+    sid    = "LambdaEventSourceMappingUntag"
+    effect = "Allow"
+    actions = [
+      "lambda:UntagResource",
+    ]
+    resources = [
+      "arn:aws:lambda:*:${var.account_id}:event-source-mapping:*"
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "aws:ResourceTag/Project"
+      values   = [var.prefix]
+    }
   }
 
   statement {
