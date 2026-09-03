@@ -784,10 +784,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c673075a2e0e5f4a1dde27ce9dee1ea4558c7ffe648f576438a20ca1d2acc4b0"
 dependencies = [
  "iana-time-zone",
- "js-sys",
  "num-traits",
  "serde",
- "wasm-bindgen",
  "windows-link",
 ]
 
@@ -797,20 +795,14 @@ version = "0.1.0"
 dependencies = [
  "aws-config",
  "aws-sdk-ssm",
- "chrono",
  "ci-ingest",
  "lambda_http",
- "lambda_runtime",
- "rustls 0.23.37",
- "rustls-pemfile",
- "rustls-pki-types",
  "serde",
  "serde_json",
  "testcontainers",
  "testcontainers-modules",
  "tokio",
  "tokio-postgres",
- "tokio-postgres-rustls",
  "tracing",
  "tracing-subscriber",
 ]

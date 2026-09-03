@@ -8,7 +8,6 @@ rust_shared_crates_dir: .
 rust_artifacts:
   lambdas:
     - auth-trigger
-    - ci-history-migrate
     - ci-ingest
     - cors-handler
     - db-migrate

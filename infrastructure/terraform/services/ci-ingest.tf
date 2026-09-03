@@ -22,9 +22,6 @@ module "ci_ingest" {
     DB_NAME       = var.truenas_db_stacks["ahara-observability"].databases["engineering"].db_name
     DB_SSM_PREFIX = "/ahara/truenas-db/ahara-observability/engineering"
     INGEST_TOKEN  = random_password.ci_ingest_token.result
-    MIGRATION_GATE = sha256(
-      aws_lambda_invocation.ci_history_pre_cutover.result
-    )
   }
 
   iam_policy = [jsonencode({

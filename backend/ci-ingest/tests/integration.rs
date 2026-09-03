@@ -3,7 +3,6 @@ use ci_ingest::db::{
     QualityFileMetric, QualityFinding, QualityFunctionMetric, QualityScanReport, QualitySource,
     TestSuiteReport,
 };
-use ci_ingest::migration::migrate_legacy_builds;
 use serde_json::json;
 use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::postgres::Postgres;
@@ -378,111 +377,4 @@ async fn test_maximum_quality_function_batch() {
         .unwrap()
         .get(0);
     assert_eq!(count, 250);
-}
-
-#[tokio::test]
-async fn test_legacy_history_migration_is_idempotent_and_catches_late_rows() {
-    let (mut source, container) = setup().await;
-    let host = container.get_host().await.unwrap();
-    let port = container.get_host_port_ipv4(5432).await.unwrap();
-    let connstr =
-        format!("host={host} port={port} user=postgres password=postgres dbname=postgres");
-    let (mut destination, connection) = tokio_postgres::connect(&connstr, NoTls).await.unwrap();
-    tokio::spawn(async move {
-        connection.await.ok();
-    });
-
-    source
-        .batch_execute(
-            "CREATE TABLE ci_builds (
-               id SERIAL PRIMARY KEY,
-               repo TEXT NOT NULL,
-               workflow TEXT NOT NULL,
-               status TEXT NOT NULL,
-               branch TEXT NOT NULL,
-               commit_sha TEXT NOT NULL,
-               run_id TEXT NOT NULL UNIQUE,
-               run_url TEXT,
-               duration_seconds INTEGER,
-               lint_passed BOOLEAN,
-               test_passed BOOLEAN,
-               created_at TIMESTAMPTZ DEFAULT NOW()
-             );
-             INSERT INTO ci_builds (
-               repo, workflow, status, branch, commit_sha, run_id, run_url,
-               duration_seconds, lint_passed, test_passed, created_at
-             ) VALUES
-               ('chris-arsenault/one', 'CI', 'success', 'main', 'aaa', 'legacy-1',
-                'https://github.com/one/actions/runs/1', 42, TRUE, TRUE,
-                '2026-08-01T01:02:03Z'),
-               ('chris-arsenault/two', 'CI/CD', 'failure', 'main', 'bbb', 'legacy-2',
-                NULL, 18, FALSE, NULL, '2026-08-02T02:03:04Z');",
-        )
-        .await
-        .unwrap();
-
-    let first = migrate_legacy_builds(&mut source, &mut destination)
-        .await
-        .unwrap();
-    assert_eq!(first.source_rows, 2);
-    assert_eq!(first.inserted_rows, 2);
-    assert_eq!(first.verified_rows, 2);
-    assert_eq!(first.destination_rows, 2);
-
-    let migrated = destination
-        .query_one(
-            "SELECT repo, status, duration_seconds, lint_passed, test_passed, created_at
-             FROM ci_run WHERE run_id = 'legacy-2'",
-            &[],
-        )
-        .await
-        .unwrap();
-    assert_eq!(migrated.get::<_, String>(0), "chris-arsenault/two");
-    assert_eq!(migrated.get::<_, String>(1), "failure");
-    assert_eq!(migrated.get::<_, Option<i32>>(2), Some(18));
-    assert_eq!(migrated.get::<_, Option<bool>>(3), Some(false));
-    assert_eq!(migrated.get::<_, Option<bool>>(4), None);
-    assert_eq!(
-        migrated.get::<_, chrono::DateTime<chrono::Utc>>(5),
-        "2026-08-02T02:03:04Z"
-            .parse::<chrono::DateTime<chrono::Utc>>()
-            .unwrap()
-    );
-
-    destination
-        .execute(
-            "UPDATE ci_run SET event_name = 'push' WHERE run_id = 'legacy-2'",
-            &[],
-        )
-        .await
-        .unwrap();
-    source
-        .execute(
-            "INSERT INTO ci_builds (
-               repo, workflow, status, branch, commit_sha, run_id, duration_seconds,
-               lint_passed, test_passed, created_at
-             ) VALUES ('chris-arsenault/three', 'CI', 'success', 'main', 'ccc',
-                       'legacy-3', 30, TRUE, TRUE, '2026-08-03T03:04:05Z')",
-            &[],
-        )
-        .await
-        .unwrap();
-
-    let catch_up = migrate_legacy_builds(&mut source, &mut destination)
-        .await
-        .unwrap();
-    assert_eq!(catch_up.source_rows, 3);
-    assert_eq!(catch_up.inserted_rows, 1);
-    assert_eq!(catch_up.verified_rows, 3);
-    assert_eq!(catch_up.destination_rows, 3);
-
-    let event_name: Option<String> = destination
-        .query_one(
-            "SELECT event_name FROM ci_run WHERE run_id = 'legacy-2'",
-            &[],
-        )
-        .await
-        .unwrap()
-        .get(0);
-    assert_eq!(event_name.as_deref(), Some("push"));
 }
