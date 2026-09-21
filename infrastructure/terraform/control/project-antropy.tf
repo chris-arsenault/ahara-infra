@@ -16,5 +16,11 @@ module "project_antropy" {
 
   policy_modules = [
     "terraform-state",
+    "komodo-deploy",
+    "ssm-write",
+  ]
+
+  ssm_additional_parameter_paths = [
+    "ahara/antropy/operator-token",
   ]
 }
