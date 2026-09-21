@@ -32,4 +32,15 @@ data "aws_iam_policy_document" "this" {
     ]
     resources = ["arn:aws:cloudfront::${var.account_id}:*"]
   }
+
+  statement {
+    sid    = "CloudFrontResponseHeadersPolicies"
+    effect = "Allow"
+    actions = [
+      "cloudfront:CreateResponseHeadersPolicy",
+      "cloudfront:UpdateResponseHeadersPolicy",
+      "cloudfront:DeleteResponseHeadersPolicy",
+    ]
+    resources = ["arn:aws:cloudfront::${var.account_id}:response-headers-policy/*"]
+  }
 }
