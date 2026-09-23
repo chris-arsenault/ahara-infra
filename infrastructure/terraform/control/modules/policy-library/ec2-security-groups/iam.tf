@@ -14,6 +14,23 @@ data "aws_iam_policy_document" "this" {
     }
   }
 
+  # Authorizing a rule also authorizes the new security-group-rule resource, which has no
+  # tags yet; ManageSecurityGroups still requires the parent group to carry the project tag.
+  statement {
+    sid    = "CreateSecurityGroupRules"
+    effect = "Allow"
+    actions = [
+      "ec2:AuthorizeSecurityGroupIngress",
+      "ec2:AuthorizeSecurityGroupEgress",
+    ]
+    resources = ["arn:aws:ec2:*:${var.account_id}:security-group-rule/*"]
+    condition {
+      test     = "StringEqualsIfExists"
+      variable = "aws:RequestTag/Project"
+      values   = [var.prefix]
+    }
+  }
+
   statement {
     sid    = "ManageSecurityGroups"
     effect = "Allow"
