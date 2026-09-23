@@ -23,6 +23,7 @@ variable "migration_projects" {
     "ahara-business"  = { db_name = "ahara_business" }
     "glass-frontier"  = { db_name = "glass_frontier" }
     "tsonu-music"     = { db_name = "tsonu_music" }
+    "score-shelf"     = { db_name = "score_shelf" }
   }
 }
 
