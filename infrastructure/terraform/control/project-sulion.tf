@@ -19,6 +19,9 @@ module "project_sulion" {
     "komodo-deploy",
     "secrets-manager",
     "ssm-write",
+    # The transcript archive bucket (sulion-archive-<account>) is created and
+    # configured by the project's own Terraform on deploy.
+    "s3-private-storage",
   ]
 
   ssm_additional_parameter_paths = [
