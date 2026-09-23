@@ -37,6 +37,14 @@ locals {
       auth      = "internal"
       buffering = "off"
     }
+    # Antropy's ALB rules forward only GET /stream and GET /health; /api stays LAN-only.
+    "server.biotropy.ahara.io" = {
+      address   = "192.168.66.3"
+      port      = 8095
+      auth      = "internal"
+      buffering = "off"
+      websocket = true
+    }
     "sulion.services.ahara.io" = {
       address   = "192.168.66.3"
       port      = 30080

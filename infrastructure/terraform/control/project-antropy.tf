@@ -12,7 +12,7 @@ module "project_antropy" {
   prefix           = "antropy"
   state_key_prefix = "projects/antropy"
 
-  module_bundles = ["website"]
+  module_bundles = ["website", "alb-api-truenas"]
 
   policy_modules = [
     "terraform-state",
