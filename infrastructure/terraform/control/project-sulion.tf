@@ -32,3 +32,20 @@ module "project_sulion" {
     "ahara/machines/workloads/sulion/*",
   ]
 }
+
+# Only the temporary upload bucket needs policy and ownership management.
+resource "aws_iam_role_policy" "sulion_upload_bucket" {
+  name = "sulion-upload-bucket-configuration"
+  role = module.project_sulion.role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "s3:GetBucketPolicy", "s3:PutBucketPolicy", "s3:DeleteBucketPolicy",
+        "s3:GetBucketOwnershipControls", "s3:PutBucketOwnershipControls", "s3:DeleteBucketOwnershipControls",
+      ]
+      Resource = "arn:aws:s3:::sulion-uploads-${local.account_id}"
+    }]
+  })
+}

@@ -7,6 +7,15 @@ resource "aws_wafv2_web_acl" "alb" {
     allow {}
   }
 
+  custom_response_body {
+    key          = "lfi-body-blocked"
+    content_type = "APPLICATION_JSON"
+    content = jsonencode({
+      code  = "WAF_LFI_BODY"
+      error = "Security policy blocked this request (LFI_BODY). Review the submitted text before trying again."
+    })
+  }
+
   # Foundry VTT (foundry-vtt repo) is fully exempt from WAF: its websocket
   # game protocol and in-app file uploads trip the managed rules, the host
   # only ever forwards to the Foundry target group, and Foundry handles its
@@ -143,6 +152,19 @@ resource "aws_wafv2_web_acl" "alb" {
           name = "SizeRestrictions_BODY"
           action_to_use {
             count {}
+          }
+        }
+
+        # Preserve enforcement and rule ordering; only the block response changes.
+        rule_action_override {
+          name = "GenericLFI_BODY"
+          action_to_use {
+            block {
+              custom_response {
+                response_code            = 403
+                custom_response_body_key = "lfi-body-blocked"
+              }
+            }
           }
         }
       }
