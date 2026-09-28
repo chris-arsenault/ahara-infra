@@ -3,6 +3,25 @@ resource "aws_wafv2_web_acl" "alb" {
   description = "WAF protecting the reverse proxy ALB."
   scope       = "REGIONAL"
 
+  # Logging redaction alone does not cover sampled requests. Protect the
+  # credential fields before WAF emits either form of request data.
+  data_protection_config {
+    data_protection {
+      action = "SUBSTITUTION"
+      field {
+        field_type = "SINGLE_HEADER"
+        field_keys = ["authorization", "cookie", "x-api-key", "sec-websocket-protocol"]
+      }
+    }
+    data_protection {
+      action = "SUBSTITUTION"
+      field {
+        field_type = "SINGLE_QUERY_ARGUMENT"
+        field_keys = ["access_token"]
+      }
+    }
+  }
+
   default_action {
     allow {}
   }
@@ -288,77 +307,6 @@ resource "aws_wafv2_web_acl" "alb" {
     }
   }
 
-  # Pairing initiation is intentionally anonymous so a new device can obtain a
-  # code, but it also inserts a database row. Bound that write independently of
-  # the broader shared-ALB rate limit; token polling remains unaffected.
-  rule {
-    name     = "SulionPairingStartRateLimit"
-    priority = 5
-
-    action {
-      block {}
-    }
-
-    statement {
-      rate_based_statement {
-        aggregate_key_type = "IP"
-        limit              = 100
-
-        scope_down_statement {
-          and_statement {
-            statement {
-              byte_match_statement {
-                positional_constraint = "EXACTLY"
-                search_string         = "sulion.services.ahara.io"
-                field_to_match {
-                  single_header { name = "host" }
-                }
-                text_transformation {
-                  priority = 0
-                  type     = "LOWERCASE"
-                }
-              }
-            }
-
-            statement {
-              byte_match_statement {
-                positional_constraint = "EXACTLY"
-                search_string         = "/api/devices/pair"
-                field_to_match {
-                  uri_path {}
-                }
-                text_transformation {
-                  priority = 0
-                  type     = "NONE"
-                }
-              }
-            }
-
-            statement {
-              byte_match_statement {
-                positional_constraint = "EXACTLY"
-                search_string         = "POST"
-                field_to_match {
-                  method {}
-                }
-                text_transformation {
-                  priority = 0
-                  type     = "NONE"
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-
-    visibility_config {
-      cloudwatch_metrics_enabled = true
-      metric_name                = "${local.prefix}-sulion-pairing-rate-limit"
-      sampled_requests_enabled   = true
-    }
-  }
-
   visibility_config {
     cloudwatch_metrics_enabled = true
     metric_name                = "${local.prefix}-alb-waf"
@@ -383,6 +331,13 @@ resource "aws_cloudwatch_log_group" "waf_alb" {
 resource "aws_wafv2_web_acl_logging_configuration" "alb" {
   resource_arn            = aws_wafv2_web_acl.alb.arn
   log_destination_configs = [aws_cloudwatch_log_group.waf_alb.arn]
+
+  redacted_fields {
+    single_header { name = "sec-websocket-protocol" }
+  }
+  redacted_fields {
+    query_string {}
+  }
 
   redacted_fields {
     single_header {

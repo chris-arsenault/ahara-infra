@@ -24,7 +24,8 @@ resource "aws_cognito_user_pool" "pool" {
   dynamic "lambda_config" {
     for_each = var.pre_auth_lambda_arn != "" ? [1] : []
     content {
-      pre_authentication = var.pre_auth_lambda_arn
+      pre_authentication   = var.pre_auth_lambda_arn
+      pre_token_generation = var.pre_auth_lambda_arn
     }
   }
 

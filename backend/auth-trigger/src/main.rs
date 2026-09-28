@@ -76,6 +76,7 @@ async fn load_user_apps(
     let result = ddb
         .get_item()
         .table_name(&table_name)
+        .consistent_read(true)
         .key("username", AttributeValue::S(username.to_string()))
         .send()
         .await?;
@@ -96,7 +97,7 @@ async fn handler(event: LambdaEvent<serde_json::Value>) -> Result<serde_json::Va
     let client_id = &cognito.caller_context.client_id;
     let username = &cognito.user_name;
 
-    info!(username, client_id, "Pre-authentication check");
+    info!(username, client_id, "Application entitlement check");
 
     if username == "chris" {
         info!(username, "Seeded admin access granted");
@@ -132,6 +133,31 @@ async fn main() -> Result<(), Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn refresh_event_uses_the_same_principal_and_application_contract() {
+        let payload = serde_json::json!({
+            "triggerSource":"TokenGeneration_RefreshTokens",
+            "callerContext":{"clientId":"external-client-id"},
+            "userName":"user", "request":{"userAttributes":{}}, "response":{}
+        });
+        let event: CognitoEvent = serde_json::from_value(payload).unwrap();
+        let map = external_client_map();
+        assert!(authorize_app_access(
+            &event.user_name,
+            &event.caller_context.client_id,
+            &map,
+            Some(&user_apps(&["ahara-business-app"]))
+        )
+        .is_ok());
+        assert!(authorize_app_access(
+            &event.user_name,
+            &event.caller_context.client_id,
+            &map,
+            Some(&user_apps(&[]))
+        )
+        .is_err());
+    }
 
     fn external_client_map() -> HashMap<String, String> {
         HashMap::from([(
