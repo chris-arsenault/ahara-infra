@@ -15,7 +15,7 @@ async fn main() -> Result<(), Error> {
     let state = Arc::new(AppState::new(
         SsmClient::new(&aws_config),
         HttpClient::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(30))
             .build()?,
         BootstrapConfig::from_env(),
     ));
