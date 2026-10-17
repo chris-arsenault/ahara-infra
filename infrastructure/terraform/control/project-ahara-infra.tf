@@ -67,6 +67,31 @@ module "ahara_infra_project" {
   ]
 }
 
+# The shared status recorder owns one rule; product schedules remain client-owned.
+resource "aws_iam_role_policy" "ahara_infra_pipeline_status" {
+  name = "ahara-pipeline-status-rule"
+  role = module.ahara_infra_project.role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "ManagePipelineStatusRule"
+      Effect = "Allow"
+      Action = [
+        "events:PutRule",
+        "events:DescribeRule",
+        "events:DeleteRule",
+        "events:PutTargets",
+        "events:RemoveTargets",
+        "events:ListTargetsByRule",
+        "events:TagResource",
+        "events:UntagResource",
+        "events:ListTagsForResource",
+      ]
+      Resource = "arn:aws:events:us-east-1:${local.account_id}:rule/ahara-pipeline-status"
+    }]
+  })
+}
+
 # The consolidated platform deployer runs the TrueNAS database provisioner.
 # Keep this Ahara-only operation off the shared db-migrate policy used by
 # product repositories.

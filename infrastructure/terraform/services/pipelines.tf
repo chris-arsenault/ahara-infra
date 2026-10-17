@@ -65,6 +65,12 @@ module "pipeline_status" {
 }
 resource "aws_cloudwatch_event_rule" "pipeline_status" {
   name = "${local.prefix}-pipeline-status"
+  lifecycle {
+    precondition {
+      condition     = var.control_plane_revision != ""
+      error_message = "The pipeline status rule requires the active deployer permissions."
+    }
+  }
   event_pattern = jsonencode({
     source        = ["aws.states"]
     "detail-type" = ["Step Functions Execution Status Change"]
