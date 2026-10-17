@@ -252,7 +252,7 @@ fn api_error(method: &str, path: &str, status: StatusCode, body: &str) -> Error 
 }
 
 fn request_error(error: reqwest::Error) -> Error {
-    std::io::Error::other(format!("Grafana HTTP request failed: {error}")).into()
+    std::io::Error::other(format!("Grafana HTTP request failed: {error:?}")).into()
 }
 
 #[cfg(test)]
