@@ -9,6 +9,7 @@
 
 locals {
   bundle_expansions = {
+    pipeline = toset(["pipeline", "iam-roles", "sqs", "cloudwatch-alarms"])
     website = toset([
       "s3-website",
       "cloudfront-distribution",

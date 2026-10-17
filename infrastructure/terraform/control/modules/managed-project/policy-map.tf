@@ -21,6 +21,12 @@ module "lambda-deploy" {
   account_id = var.account_id
 }
 
+module "pipeline" {
+  source     = "../policy-library/pipeline"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 module "alb-target-group" {
   source     = "../policy-library/alb-target-group"
   prefix     = var.prefix
@@ -246,6 +252,7 @@ module "security-audit" {
 
 locals {
   policy_map = {
+    "pipeline"                    = module.pipeline.policy_json
     "terraform-state"             = module.terraform-state.policy_json
     "control-plane"               = module.control-plane.policy_json
     "lambda-deploy"               = module.lambda-deploy.policy_json

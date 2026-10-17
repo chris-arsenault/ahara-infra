@@ -49,3 +49,7 @@ output "reverse_proxy_target_group_arn" {
 output "reverse_proxy_cognito_hosts" {
   value = local.reverse_proxy_cognito_hosts
 }
+
+output "otlp_http_endpoint" {
+  value = aws_ssm_parameter.observability_otlp_http_endpoint.value
+}

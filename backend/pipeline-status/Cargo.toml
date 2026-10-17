@@ -1,0 +1,18 @@
+[package]
+name = "pipeline-status"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ahara-lambda-telemetry = { path = "../../crates/ahara-lambda-telemetry" }
+aws-config.workspace = true
+aws-sdk-dynamodb = "1"
+lambda_runtime.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
+testcontainers.workspace = true

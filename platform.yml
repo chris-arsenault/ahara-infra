@@ -16,3 +16,4 @@ rust_artifacts:
     - komodo-proxy
     - og-server
     - ops-dashboard
+    - pipeline-status

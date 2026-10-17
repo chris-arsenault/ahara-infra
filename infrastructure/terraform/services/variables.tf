@@ -85,3 +85,8 @@ variable "control_plane_revision" {
   description = "Active deployer-policy revision required before service-side provisioning invocations"
   type        = string
 }
+
+variable "otlp_http_endpoint" {
+  description = "Private OTLP gateway from the network layer"
+  type        = string
+}
