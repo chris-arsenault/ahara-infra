@@ -28,7 +28,10 @@ data "aws_iam_policy_document" "this" {
     }
   }
   statement {
-    sid       = "TagNewEventResources"
+    sid = "TagNewEventResources"
+    # TagResource also authorizes tag-on-create. This grant can adopt an existing
+    # untagged resource; it rejects another Project tag, but is not full isolation.
+    # Strict existing-tag conditions require a verified AppSync creation path.
     actions   = ["appsync:TagResource", "appsync:CreateChannelNamespace"]
     resources = ["arn:aws:appsync:us-east-1:${var.account_id}:apis/*", "arn:aws:appsync:us-east-1:${var.account_id}:apis/*/channelNamespace/*"]
     condition {
