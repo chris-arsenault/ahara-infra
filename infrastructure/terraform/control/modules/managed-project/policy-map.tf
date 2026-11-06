@@ -137,6 +137,12 @@ module "sns" {
   account_id = var.account_id
 }
 
+module "appsync-events" {
+  source     = "../policy-library/appsync-events"
+  prefix     = var.prefix
+  account_id = var.account_id
+}
+
 module "sqs" {
   source     = "../policy-library/sqs"
   prefix     = var.prefix
@@ -273,6 +279,7 @@ locals {
     "db-migrate"                  = module.db-migrate.policy_json
     "rds"                         = module.rds.policy_json
     "sns"                         = module.sns.policy_json
+    "appsync-events"              = module.appsync-events.policy_json
     "sqs"                         = module.sqs.policy_json
     "ses"                         = module.ses.policy_json
     "s3-private-storage"          = module.s3_private_storage.policy_json
