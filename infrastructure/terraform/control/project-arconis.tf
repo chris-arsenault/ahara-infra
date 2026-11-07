@@ -19,6 +19,10 @@ module "project_arconis" {
     "alb-target-group",
     "s3-private-storage",
     "ssm-write",
+    "cognito-pool",
+    "cognito-client",
+    "dynamodb",
+    "pipeline",
   ]
 
   ssm_additional_parameter_paths = [

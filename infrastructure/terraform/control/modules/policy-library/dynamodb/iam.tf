@@ -13,6 +13,7 @@ data "aws_iam_policy_document" "this" {
       "dynamodb:UpdateTimeToLive",
       "dynamodb:DescribeTimeToLive",
       "dynamodb:DescribeContinuousBackups",
+      "dynamodb:UpdateContinuousBackups",
       "dynamodb:PutItem",
       "dynamodb:GetItem",
       "dynamodb:DeleteItem",
