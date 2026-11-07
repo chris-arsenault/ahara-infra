@@ -11,5 +11,18 @@ module "project_arconis" {
   prefix             = "arconis"
   state_key_prefix   = "projects/arconis"
   module_bundles     = ["website"]
-  policy_modules     = ["terraform-state", "appsync-events"]
+  policy_modules = [
+    "terraform-state",
+    "appsync-events",
+    "ec2-vpc-compute",
+    "ec2-security-groups",
+    "iam-instance-profiles",
+    "alb-target-group",
+    "s3-private-storage",
+    "ssm-write",
+  ]
+
+  ssm_additional_parameter_paths = [
+    "ahara/arconis/*",
+  ]
 }
