@@ -13,7 +13,6 @@ module "project_arconis" {
   module_bundles     = ["website"]
   policy_modules = [
     "terraform-state",
-    "appsync-events",
     "ec2-vpc-compute",
     "ec2-security-groups",
     "iam-instance-profiles",
