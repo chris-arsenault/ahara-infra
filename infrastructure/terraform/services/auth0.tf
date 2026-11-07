@@ -56,9 +56,7 @@ resource "auth0_tenant" "ahara" {
   # MCP clients name the API they want with the OAuth `resource` parameter.
   resource_parameter_profile = "compatibility"
 
-  # Clients may also register by client metadata document, which the MCP specification prefers.
-  client_id_metadata_document_supported                      = true
-  client_id_metadata_document_dynamic_registration_supported = true
+  # Registration by client metadata document waits for a provider release that sets it.
 
   flags {
     enable_dynamic_client_registration = true
