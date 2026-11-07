@@ -1,7 +1,8 @@
 # =============================================================================
 # Cognito User Pool (shared across all ahara apps)
 #
-# Auth domain: auth.services.ahara.io (not auth.ahara.io).
+# Auth domain: auth.services.ahara.io. auth.ahara.io is the Auth0 tenant's
+# sign-in domain (services/auth0.tf).
 # Putting Cognito on a subdomain of services.ahara.io means its parent-
 # domain DNS requirement is satisfied by services/dns.tf without touching
 # the apex zone (ahara.io), which is owned by ahara-portal.
