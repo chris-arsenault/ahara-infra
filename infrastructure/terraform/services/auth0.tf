@@ -52,6 +52,7 @@ locals {
 resource "auth0_tenant" "ahara" {
   friendly_name = "Ahara"
   picture_url   = "https://${var.domain_name}/favicon.svg"
+  support_email = "support@${var.domain_name}"
 
   # MCP clients name the API they want with the OAuth `resource` parameter.
   resource_parameter_profile = "compatibility"
