@@ -58,9 +58,89 @@ resource "auth0_tenant" "ahara" {
 
   # Registration by client metadata document waits for a provider release that sets it.
 
+  # Production settings from Auth0's readiness checks: emails link to
+  # auth.ahara.io, a new application gets no connection until its product
+  # enables one, and ID tokens never authorize the Management API.
   flags {
     enable_dynamic_client_registration = true
+    enable_custom_domain_in_emails     = true
+    enable_client_connections          = false
+    enable_idtoken_api2                = false
   }
+}
+
+# Identifier-first Universal Login is what lets a product's connection verify a
+# new user's email with a code during sign-up.
+resource "auth0_prompt" "ahara" {
+  universal_login_experience = "new"
+  identifier_first           = true
+}
+
+# --- Email: Auth0 sends through SES from no-reply@ahara.io ---
+#
+# Managed separately, part of the platform: the IAM user ahara-auth0-email was
+# created by hand, because this stack's deployer role does not manage IAM
+# users. Its one inline policy, ses-send-no-reply, allows ses:SendEmail and
+# ses:SendRawEmail on the ahara.io identity only from no-reply@ahara.io. Its
+# access key lives in /ahara/auth0/ses-access-key-id and
+# /ahara/auth0/ses-secret-access-key; rotate it by creating a new key, updating
+# both parameters, applying this stack, then deleting the old key.
+
+data "aws_ssm_parameter" "auth0_ses_access_key_id" {
+  name = "${local.ssm_prefix}/auth0/ses-access-key-id"
+}
+
+data "aws_ssm_parameter" "auth0_ses_secret_access_key" {
+  name = "${local.ssm_prefix}/auth0/ses-secret-access-key"
+}
+
+resource "auth0_email_provider" "ses" {
+  name                 = "ses"
+  enabled              = true
+  default_from_address = "no-reply@${var.domain_name}"
+
+  credentials {
+    access_key_id     = nonsensitive(data.aws_ssm_parameter.auth0_ses_access_key_id.value)
+    secret_access_key = data.aws_ssm_parameter.auth0_ses_secret_access_key.value
+    region            = data.aws_region.current.region
+  }
+}
+
+locals {
+  auth0_email_from = "Ahara <no-reply@${var.domain_name}>"
+
+  # One layout for every code Auth0 emails; Auth0 fills {{ code }} and {{ user.email }}.
+  auth0_code_emails = {
+    verify_email_by_code = {
+      subject = "Your Ahara verification code"
+      lead    = "Enter this code to finish creating your Ahara account."
+      ignore  = "If you did not sign up, you can ignore this email."
+    }
+    reset_email_by_code = {
+      subject = "Your Ahara password reset code"
+      lead    = "Enter this code to choose a new password for your Ahara account."
+      ignore  = "If you did not ask to reset your password, you can ignore this email; your password is unchanged."
+    }
+  }
+}
+
+resource "auth0_email_template" "code" {
+  for_each = local.auth0_code_emails
+
+  template = each.key
+  enabled  = true
+  from     = local.auth0_email_from
+  subject  = each.value.subject
+  syntax   = "liquid"
+  body = templatefile("${path.module}/auth0-emails/code.html", {
+    title  = each.value.subject
+    lead   = each.value.lead
+    ignore = each.value.ignore
+  })
+
+  url_lifetime_in_seconds = 900
+
+  depends_on = [auth0_email_provider.ses]
 }
 
 resource "auth0_branding" "ahara" {

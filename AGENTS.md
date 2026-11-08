@@ -81,6 +81,21 @@ No circular dependencies. Cross-layer references use direct module outputs
 
 **Route53** — `ahara.io.` zone looked up by name (not SSM).
 
+## Managed separately, part of the platform
+
+These platform resources are created by hand, outside Terraform, and this stack
+depends on them. Change them by hand and keep this list current.
+
+- **Auth0 tenant and its Terraform credential** — `/ahara/auth0/{domain,client-id,client-secret}`.
+- **IAM user `ahara-auth0-email`** — Auth0 sends sign-up and password-reset
+  codes through SES with its access key. The deployer role does not manage IAM
+  users. Its inline policy `ses-send-no-reply` allows `ses:SendEmail` and
+  `ses:SendRawEmail` on the `ahara.io` identity from `no-reply@ahara.io` only.
+  The key lives in `/ahara/auth0/ses-access-key-id` and
+  `/ahara/auth0/ses-secret-access-key`; `services/auth0.tf` reads both. Rotate by
+  creating a second key, updating both parameters, applying, then deleting the old key.
+- **SES identity `ahara.io`** — DKIM-verified, with production access.
+
 **ahara-vpn route contract** — ahara-vpn exclusively owns the WireGuard
 endpoint, tunnel secrets, and `wg.ahara.io`. This stack owns only the VPC routes
 to the endpoint and resolves its pinned ENI by `eni:role = "wireguard"`.
