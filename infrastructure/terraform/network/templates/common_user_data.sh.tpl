@@ -129,11 +129,13 @@ EOF
   systemctl enable --now vector
 }
 
+# Initial package installation can exhaust a small instance before NAT is ready.
+run_optional "bootstrap swap" ensure_bootstrap_swap
+
 # Critical network/application setup must run before package-heavy hardening or
 # telemetry setup. NAT is a single-instance network dependency.
 ${EXTRA_SNIPPET}
 
-run_optional "bootstrap swap" ensure_bootstrap_swap
 run_optional "dnf security refresh" dnf -y upgrade --refresh
 run_optional "system hardening" apply_hardening
 run_optional "alloy telemetry" install_alloy
