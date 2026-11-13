@@ -1,6 +1,6 @@
-.PHONY: ci shared-crates-ci shared-crates-lint shared-crates-fmt shared-crates-test lint fmt test test-integration terraform-fmt-check build deploy
+.PHONY: ci shared-crates-ci shared-crates-lint shared-crates-fmt shared-crates-test lint fmt test test-auth0 test-integration terraform-fmt-check build deploy
 
-ci: shared-crates-ci lint fmt test terraform-fmt-check
+ci: shared-crates-ci lint fmt test test-auth0 terraform-fmt-check
 
 shared-crates-ci: shared-crates-lint shared-crates-fmt shared-crates-test
 
@@ -21,6 +21,9 @@ fmt:
 
 test:
 	cd backend && cargo test --lib
+
+test-auth0:
+	node --test infrastructure/terraform/services/auth0-actions/*.test.cjs
 
 test-integration:
 	cd backend && cargo test --test '*'

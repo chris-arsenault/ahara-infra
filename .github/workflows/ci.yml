@@ -15,4 +15,6 @@ permissions:
 jobs:
   ci:
     uses: chris-arsenault/ahara/.github/workflows/ci.yml@main
+    with:
+      rust_extra_ci_commands: make test-auth0
     secrets: inherit

@@ -71,6 +71,7 @@ No circular dependencies. Cross-layer references use direct module outputs
 - `sg:role = "vpn-client"` + `sg:scope = "ahara"` on the VPN client SG
 
 **SSM parameters** — published by the services layer:
+- `/ahara/auth0/{issuer,connection-id,connection-name}` — shared Auth0 issuer and account connection; products own additive client associations and their API grants
 - `/ahara/cognito/*` — user pool ID/ARN/domain/issuer, client IDs
 - `/ahara/rds/*` — endpoint, address, port, master creds, SG id
 - `/ahara/db/<project>/*` — per-project app creds (published by db-migrate Lambda)

@@ -3,8 +3,8 @@
 #
 # One tenant serves Ahara's products that sign people in through Auth0. This
 # stack owns what is shared: the tenant settings, its Ahara branding and the
-# sign-in domain auth.ahara.io. Each product's own Terraform owns its database
-# connection (its own users), its applications and its APIs in the tenant.
+# sign-in domain auth.ahara.io. auth0-accounts.tf owns the shared user connection
+# and verification rule. Products own their applications, API grants and client associations.
 #
 # The tenant and its Terraform credential were created by hand once; the
 # credential lives in /ahara/auth0/{domain,client-id,client-secret}. Product
@@ -113,14 +113,16 @@ locals {
   # One layout for every code Auth0 emails; Auth0 fills {{ code }} and {{ user.email }}.
   auth0_code_emails = {
     verify_email_by_code = {
-      subject = "Your Ahara verification code"
+      subject = "Your Ahara verification code{% if application.name != blank %} — requested from {{ application.name }}{% endif %}"
       lead    = "Enter this code to finish creating your Ahara account."
       ignore  = "If you did not sign up, you can ignore this email."
+      effect  = "Use this Ahara account across applications that support Ahara sign-in."
     }
     reset_email_by_code = {
-      subject = "Your Ahara password reset code"
+      subject = "Your Ahara password reset code{% if application.name != blank %} — requested from {{ application.name }}{% endif %}"
       lead    = "Enter this code to choose a new password for your Ahara account."
       ignore  = "If you did not ask to reset your password, you can ignore this email; your password is unchanged."
+      effect  = "Changing this password changes it for every application that uses your Ahara account."
     }
   }
 }
@@ -134,9 +136,10 @@ resource "auth0_email_template" "code" {
   subject  = each.value.subject
   syntax   = "liquid"
   body = templatefile("${path.module}/auth0-emails/code.html", {
-    title  = each.value.subject
+    title  = "Ahara account"
     lead   = each.value.lead
     ignore = each.value.ignore
+    effect = each.value.effect
   })
 
   url_lifetime_in_seconds = 900

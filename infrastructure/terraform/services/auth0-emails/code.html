@@ -18,6 +18,10 @@
             <tr>
               <td style="padding:32px;">
                 <p style="margin:0 0 16px;font-size:16px;line-height:24px;">${lead}</p>
+                {% if application.name != blank %}
+                <p style="margin:0 0 16px;font-size:14px;line-height:20px;color:#55576b;">Requested from {{ application.name | escape }}.</p>
+                {% endif %}
+                <p style="margin:0 0 16px;font-size:14px;line-height:20px;color:#55576b;">${effect}</p>
                 <p style="margin:0 0 24px;font-size:32px;line-height:40px;font-weight:600;letter-spacing:6px;">{{ code }}</p>
                 <p style="margin:0 0 8px;font-size:14px;line-height:20px;color:#55576b;">The code works for 15 minutes.</p>
                 <p style="margin:0;font-size:14px;line-height:20px;color:#55576b;">${ignore}</p>
