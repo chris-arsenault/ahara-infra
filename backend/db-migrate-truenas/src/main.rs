@@ -8,10 +8,15 @@ use std::error::Error as StdError;
 use std::time::Instant;
 use tokio_postgres::{Client, NoTls};
 use tracing::{error, info};
+mod schema;
 
 #[derive(Deserialize)]
 struct DatabaseConfig {
     db_name: String,
+    #[serde(default = "schema::default_schemas")]
+    schemas: Vec<String>,
+    #[serde(default)]
+    extensions: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -400,30 +405,21 @@ async fn grant_project_schema_access(
     db_name: &str,
     role_name: &str,
     reader_name: &str,
+    database: &DatabaseConfig,
 ) -> Result<(), Error> {
-    db.batch_execute(&format!(
-        "GRANT ALL ON SCHEMA public TO \"{role_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO \"{role_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO \"{role_name}\";
-         GRANT ALL ON ALL TABLES IN SCHEMA public TO \"{role_name}\";
-         GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO \"{role_name}\";"
-    ))
-    .await
-    .map_err(|e| format!("Failed to set schema grants for {role_name} on {db_name}: {e}"))?;
-
-    db.batch_execute(&format!(
-        "GRANT USAGE ON SCHEMA public TO \"{reader_name}\";
-         GRANT SELECT ON ALL TABLES IN SCHEMA public TO \"{reader_name}\";
-         GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO \"{reader_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO \"{reader_name}\";
-         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON SEQUENCES TO \"{reader_name}\";
-         ALTER DEFAULT PRIVILEGES FOR ROLE \"{role_name}\" IN SCHEMA public GRANT SELECT ON TABLES TO \"{reader_name}\";
-         ALTER DEFAULT PRIVILEGES FOR ROLE \"{role_name}\" IN SCHEMA public GRANT SELECT ON SEQUENCES TO \"{reader_name}\";"
-    ))
-    .await
-    .map_err(|e| {
-        format!("Failed to set reader grants for {reader_name} on {db_name}: {e}").into()
-    })
+    for extension in &database.extensions {
+        db.batch_execute(&format!(
+            "CREATE EXTENSION IF NOT EXISTS {};",
+            schema::identifier(extension)
+        ))
+        .await?;
+    }
+    for name in &database.schemas {
+        db.batch_execute(&schema::grants(name, role_name, reader_name))
+            .await
+            .map_err(|e| format!("Failed to set schema grants on {db_name}.{name}: {e}"))?;
+    }
+    Ok(())
 }
 
 async fn ensure_database(
@@ -460,7 +456,7 @@ async fn ensure_database(
     .map_err(|e| format!("Failed to GRANT on database {db_name}: {e}"))?;
 
     let db = connect_project_database(ssm, db_name).await?;
-    grant_project_schema_access(&db, db_name, &role_name, &reader_name).await?;
+    grant_project_schema_access(&db, db_name, &role_name, &reader_name, database).await?;
 
     info!(
         database_id,

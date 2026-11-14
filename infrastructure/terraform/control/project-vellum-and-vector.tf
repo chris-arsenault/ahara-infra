@@ -11,5 +11,5 @@ module "project_vellum_and_vector" {
   prefix           = "vellum-and-vector"
   state_key_prefix = "projects/vellum-and-vector"
   module_bundles   = ["website"]
-  policy_modules   = ["terraform-state"]
+  policy_modules   = ["terraform-state", "komodo-deploy"]
 }

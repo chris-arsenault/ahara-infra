@@ -10,10 +10,25 @@ variable "truenas_db_stacks" {
   description = "TrueNAS database registrations grouped under the owning stack"
   type = map(object({
     databases = map(object({
-      db_name = string
+      db_name    = string
+      schemas    = optional(list(string), ["public"])
+      extensions = optional(list(string), [])
     }))
   }))
   default = {
+    vellum-and-vector = {
+      databases = {
+        maps = {
+          db_name    = "vellum_maps"
+          schemas    = ["map"]
+          extensions = ["postgis"]
+        }
+        generation = {
+          db_name = "vellum_generation"
+          schemas = ["generation"]
+        }
+      }
+    }
     ahara-observability = {
       databases = {
         engineering = {
