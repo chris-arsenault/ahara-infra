@@ -11,5 +11,7 @@ module "project_vellum_and_vector" {
   prefix           = "vellum-and-vector"
   state_key_prefix = "projects/vellum-and-vector"
   module_bundles   = ["website"]
-  policy_modules   = ["terraform-state", "komodo-deploy"]
+  policy_modules   = ["terraform-state", "komodo-deploy", "ssm-write"]
+
+  ssm_additional_parameter_paths = ["ahara/vellum-and-vector/database/*"]
 }
