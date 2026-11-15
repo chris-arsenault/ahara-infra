@@ -16,19 +16,6 @@ variable "truenas_db_stacks" {
     }))
   }))
   default = {
-    vellum-and-vector = {
-      databases = {
-        maps = {
-          db_name    = "vellum_maps"
-          schemas    = ["map"]
-          extensions = ["postgis"]
-        }
-        generation = {
-          db_name = "vellum_generation"
-          schemas = ["generation"]
-        }
-      }
-    }
     ahara-observability = {
       databases = {
         engineering = {
