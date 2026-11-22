@@ -20,4 +20,6 @@ module "project_rolling_local" {
     "s3-bucket-policy",
     "ssm-write",
   ]
+
+  ssm_additional_parameter_paths = ["ahara/auth-trigger/clients/rolling-local"]
 }
