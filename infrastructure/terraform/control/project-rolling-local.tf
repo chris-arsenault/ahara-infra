@@ -16,8 +16,6 @@ module "project_rolling_local" {
   policy_modules = [
     "terraform-state",
     "dynamodb",
-    "s3-private-storage",
-    "s3-bucket-policy",
     "ssm-write",
   ]
 
