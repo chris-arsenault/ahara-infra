@@ -196,9 +196,8 @@ resource "aws_wafv2_web_acl" "alb" {
     }
   }
 
-  # Re-block oversized bodies everywhere except the authenticated engineering
-  # ingest endpoint. SizeRestrictions_BODY is set to count above so it labels
-  # without blocking.
+  # Re-block the managed size label outside the CI ingest and Sulion MCP routes.
+  # The Sulion reverse proxy and service enforce 256 KiB on the actual body.
   rule {
     name     = "SizeRestrictions-except-report-ingest"
     priority = 3
@@ -213,6 +212,65 @@ resource "aws_wafv2_web_acl" "alb" {
           label_match_statement {
             scope = "LABEL"
             key   = "awswaf:managed:aws:core-rule-set:SizeRestrictions_Body"
+          }
+        }
+        statement {
+          not_statement {
+            statement {
+              and_statement {
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "sulion.services.ahara.io"
+                    field_to_match {
+                      single_header { name = "host" }
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
+                }
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "/mcp"
+                    field_to_match {
+                      uri_path {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+                statement {
+                  byte_match_statement {
+                    positional_constraint = "EXACTLY"
+                    search_string         = "POST"
+                    field_to_match {
+                      method {}
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "NONE"
+                    }
+                  }
+                }
+                statement {
+                  regex_match_statement {
+                    regex_string = "^application/json([[:space:]]*;.*)?$"
+                    field_to_match {
+                      single_header { name = "content-type" }
+                    }
+                    text_transformation {
+                      priority = 0
+                      type     = "LOWERCASE"
+                    }
+                  }
+                }
+              }
+            }
           }
         }
         statement {

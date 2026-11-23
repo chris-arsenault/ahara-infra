@@ -14,16 +14,17 @@ variable "migration_projects" {
   description = "Registered projects and their database names (keyed by project; the bare prefix entry is added automatically)"
   type        = map(object({ db_name = string }))
   default = {
-    "agents-of-glass" = { db_name = "agents_of_glass" }
-    svap              = { db_name = "svap" }
-    dosekit           = { db_name = "dosekit" }
-    linkdrop          = { db_name = "linkdrop" }
-    tastebase         = { db_name = "tastebase" }
-    "ahara-access"    = { db_name = "ahara_access" }
-    "ahara-business"  = { db_name = "ahara_business" }
-    "glass-frontier"  = { db_name = "glass_frontier" }
-    "tsonu-music"     = { db_name = "tsonu_music" }
-    "score-shelf"     = { db_name = "score_shelf" }
+    "agents-of-glass"   = { db_name = "agents_of_glass" }
+    svap                = { db_name = "svap" }
+    dosekit             = { db_name = "dosekit" }
+    linkdrop            = { db_name = "linkdrop" }
+    tastebase           = { db_name = "tastebase" }
+    "ahara-access"      = { db_name = "ahara_access" }
+    "ahara-business"    = { db_name = "ahara_business" }
+    "glass-frontier"    = { db_name = "glass_frontier" }
+    "tsonu-music"       = { db_name = "tsonu_music" }
+    "score-shelf"       = { db_name = "score_shelf" }
+    "vellum-and-vector" = { db_name = "vellum_and_vector" }
   }
 }
 
